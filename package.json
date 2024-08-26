@@ -1,12 +1,12 @@
 {
-  "name": "ermis-chat-sdk",
-  "version": "1.6.5",
+  "name": "ermis-chat-js-sdk",
+  "version": "1.0.2",
   "description": "JS SDK for the Ermis Chat API",
   "author": "Ermis",
   "homepage": "https://ermis.network/",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@gitlab.com/pk7795/ermis-chat-sdk.git"
+    "url": "https://github.com/ermisnetwork/ermis-chat-js-sdk"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.es.js",
@@ -139,6 +139,6 @@
     "test": "test"
   },
   "bugs": {
-    "url": "https://gitlab.com/pk7795/ermis-chat-sdk/issues"
+    "url": "https://github.com/ermisnetwork/ermis-chat-js-sdk/issues"
   }
 }
