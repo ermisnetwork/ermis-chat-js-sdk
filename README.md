@@ -402,6 +402,17 @@ await channel.editMessage(message_id, text);
 await channel.deleteMessage(message_id);
 ```
 
+**5. Search message**
+
+```javascript
+await channel.searchMessage(search_term, offset);
+```
+
+| Name        | Type   | Required | Description                                               |
+| :---------- | :----- | :------- | :-------------------------------------------------------- |
+| search_term | string | Yes      | Keyword used to filter the messages.                      |
+| offset      | string | Yes      | Starting position for retrieving search data in the list. |
+
 **5. Unread messages**
 The Unread Message Count feature shows users how many messages they missed while offline. Once they reconnect or log into the app again, they can get the number of messages published in a given channel while they were gone.
 

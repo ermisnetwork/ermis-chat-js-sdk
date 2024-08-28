@@ -537,6 +537,15 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     return await this.getClient().post(this.getClient().baseURL + `/channels/${this.type}/${this.id}/attachment`);
   }
 
+  async searchMessage(search_term: string, offset: number) {
+    return await this.getClient().post(this.getClient().baseURL + `/channels/search`, {
+      cid: this.cid,
+      search_term,
+      offset,
+      limit: 25,
+    });
+  }
+
   /**
    * assignRoles - sets member roles in a channel
    *
