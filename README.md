@@ -8,16 +8,16 @@
 
 1.  [Introduction](#introduction)
 1.  [Requirements](#requirements)
-1.  [Getting started](#getting-started)
-1.  [Sending your first message](#sending-your-first-message)
+1.  [Getting Started](#getting-started)
+1.  [Features](#features)
 
 ## Introduction
 
-The ErmisChat SDK for JavaScript allows you to add real-time chat into your client app with minimal effort.
+The ErmisChat SDK for JavaScript allows you to integrate real-time chat into your client app with minimal effort.
 
 ## Requirements
 
-This section shows you the prerequisites you need to check for using ErmisChat SDK for JavaScript. If you have any comments or questions regarding bugs and feature requests.
+This section shows you the prerequisites needed to use the ErmisChat SDK for JavaScript. If you have any comments or questions regarding bugs and feature requests, please reach out to us.
 
 ### Supported browsers
 
@@ -36,18 +36,17 @@ This section shows you the prerequisites you need to check for using ErmisChat S
 
 ## Getting started
 
-The ErmisChat client is setup to allow extension of the base types through use of generics when instantiated. The default instantiation has all generics set to `Record<string, unknown>`.
-<br />
+The ErmisChat client is designed to allow extension of the base types through use of generics when instantiated. By default, all generics are set to `Record<string, unknown>`.
 
-## Step by step
+## Step-by-Step Guide:
 
-### Step 1: Create a API key application from your dashboard
+### Step 1: Generate API key and ProjectID
 
-Before installing ErmisChat SDK, you need to create a API key on the [Ermis Dashboard](https://ermis.network). You will need the `Api key` of your Ermis application when initializing the Chat SDK.
+Before installing ErmisChat SDK, you need to generate an **API key** and **ProjectID** on the [Ermis Dashboard](https://ermis.network). This **API key** and **ProjectID** will be required when initializing the Chat SDK.
 
-> **Note**: Ermis Dashboard coming soon
+> **Note**: Ermis Dashboard will be available soon. Please contact our support team to create a client account and receive your API key. Contact support: [tony@ermis.network](mailto:tony@ermis.network)
 
-### Step 2: Install the Chat SDK
+### Step 2: Install Chat SDK
 
 You can install the Chat SDK with either `npm` or `yarn`.
 
@@ -65,13 +64,13 @@ $ npm install ermis-chat-js-sdk
 $ yarn add ermis-chat-js-sdk
 ```
 
-### Step 3: Install the WalletConnect
+### Step 3: Install WalletConnect
 
-You need to install WalletConnect to sign and login to Chat SDK. [WalletConnect docs](https://docs.walletconnect.com/appkit/javascript/core/installation), [Wagmi docs](https://wagmi.sh)
+You need to install WalletConnect to sign in and login to the Chat SDK. For more details, refer to the [WalletConnect docs](https://docs.walletconnect.com/appkit/javascript/core/installation) and [Wagmi docs](https://wagmi.sh).
 
-### Step 4: Login to ErmisChat
+### Step 4: Integrate Login via Wallet
 
-After install WalletConnect, you need import the ErmisAuth to Initialize.
+After installing WalletConnect, import the WalletConnect to initialize it:
 
 ```javascript
 import { WalletConnect } from 'ermis-chat-js-sdk';
@@ -80,15 +79,15 @@ const authInstance = WalletConnect.getInstance(API_KEY, address);
 
 #### 4.1: Create challenge
 
-Create challenge message before sign wallet.
+Create challenge message before signing with the wallet:
 
 ```javascript
 const challenge = await authInstance.startAuth();
 ```
 
-#### 4.2: Sign wallet and get token
+#### 4.2: Sign wallet and Get Token
 
-After receiving the challenge message, you need to sign the wallet to get the signature use [useSignTypedData](https://wagmi.sh/react/api/hooks/useSignTypedData), then get token.
+After receiving the challenge message, sign the wallet to get the signature using [useSignTypedData](https://wagmi.sh/react/api/hooks/useSignTypedData), then retrieve the token:
 
 ```javascript
 const response = await authInstance.getAuth(api_key, address, signature);
@@ -96,14 +95,17 @@ const response = await authInstance.getAuth(api_key, address, signature);
 
 ### Step 5: Import the Chat SDk
 
-Client-side you initialize the Chat client with your API key
+On the client-side, initialize the Chat client with your **API key** and **ProjectID**:
 
 ```javascript
 import { ErmisChat } from 'ermis-chat-js-sdk';
-const chatClient = ErmisChat.getInstance(API_KEY, {
-  timeout: 6000, // optional
-  baseURL: BASE_URL, // optional
-});
+
+const options = {
+  timeout: 6000,
+  baseURL: BASE_URL,
+}; // optional
+
+const chatClient = ErmisChat.getInstance(API_KEY, PROJECT_ID, options);
 ```
 
 Once initialized, you must specify the current user with connectUser:
@@ -119,70 +121,75 @@ await chatClient.connectUser(
 );
 ```
 
+### Step 6: Sending your first message
+
+Now that the Chat SDK has been imported, you're ready to start sending messages.
+Here are the steps to send your first message using the Chat SDK:
+
+**Send a message to the channel**:
+
+```javascript
+const channel = chatClient.channel(channel_type, channel_id);
+await channel.sendMessage({
+  text: 'Hello',
+});
+```
+
 <br />
 
-## Sending your first message
+## Features
 
-Now that the Chat SDK has been imported, we're ready to start sending a message.
-Here are the steps to sending your first message using Chat SDK:
-
-### Features:
-
-1. [Users](#users)
-1. [Channels](#channels)
-1. [Messages](#messages)
-1. [Setting channel](#setting-channel)
+1. [User management](#user-management)
+1. [Channel management](#channel-management)
+1. [Message management](#message-management)
 1. [Events](#events)
 
-### Users
+### User management
 
-Get users in your project to create direct message.
+Get the users in your project to create a direct message.
 
-**1. Query users**
-
-```javascript
-await chatClient.queryUsers(project_id, page_size, page);
-```
-
-| Name       | Type   | Required | Description                           |
-| :--------- | :----- | :------- | :------------------------------------ |
-| project_id | string | Yes      | Your project ID                       |
-| page       | number | No       | The page number you want to query     |
-| page_size  | number | No       | The number of users returned per page |
-
-**2. Search users**
+#### 1. Query users
 
 ```javascript
-await chatClient.searchUsers(page, page_size, name, project_id);
+await chatClient.queryUsers(page_size, page);
 ```
 
-| Name       | Type   | Required | Description                           |
-| :--------- | :----- | :------- | :------------------------------------ |
-| project_id | string | Yes      | Your project ID                       |
-| page       | number | No       | The page number you want to query     |
-| page_size  | number | No       | The number of users returned per page |
-| name       | string | Yes      | User name you want to query           |
+| Name      | Type   | Required | Description                           |
+| :-------- | :----- | :------- | :------------------------------------ |
+| page      | number | No       | The page number you want to query     |
+| page_size | number | No       | The number of users returned per page |
 
-**3. Get users by userIds**
+#### 2. Search users
 
 ```javascript
-await chatClient.getBatchUsers(users, page, page_size, project_id);
+await chatClient.searchUsers(page, page_size, name);
 ```
 
-| Name       | Type   | Required | Description                           |
-| :--------- | :----- | :------- | :------------------------------------ |
-| project_id | string | Yes      | Your project ID                       |
-| page       | number | No       | The page number you want to query     |
-| page_size  | number | No       | The number of users returned per page |
-| users      | array  | Yes      | List user id you want to query        |
+| Name      | Type   | Required | Description                           |
+| :-------- | :----- | :------- | :------------------------------------ |
+| page      | number | No       | The page number you want to query     |
+| page_size | number | No       | The number of users returned per page |
+| name      | string | Yes      | User name you want to query           |
 
-**4. Get user by user id**
+#### 3. Get users by userIds
+
+```javascript
+await chatClient.getBatchUsers(users, page, page_size);
+```
+
+| Name      | Type   | Required | Description                           |
+| :-------- | :----- | :------- | :------------------------------------ |
+| page      | number | No       | The page number you want to query     |
+| page_size | number | No       | The number of users returned per page |
+| users     | array  | Yes      | List user id you want to query        |
+
+#### 4. Get user by user id
 
 ```javascript
 await chatClient.queryUser(user_id);
 ```
 
-**5. Update profile**
+#### 5. Update Personal Profile
 
 ```javascript
 await chatClient.updateProfile(name, about_me);
@@ -193,25 +200,54 @@ await chatClient.updateProfile(name, about_me);
 | name     | string | Yes      | Your user name   |
 | about_me | string | No       | Your description |
 
-**6. Get contact**
+#### 6. Get contact
 
-Your contact in project
+Get all your contacts in a project:
 
 ```javascript
-await chatClient.queryContacts(PROJECT_ID);
+await chatClient.queryContacts();
+```
+
+#### 7. Real-Time User Info Updates with EventSource
+
+Guide on using EventSource for real-time user info updates, enabling instant data synchronization and seamless user experience.
+
+**Example**:
+
+```javascript
+import { EventSourcePolyfill } from 'event-source-polyfill';
+
+const eventSource = new EventSourcePolyfill(`${BASE_URL}/uss/v1/sse/subscribe`, {
+  headers: {
+    method: 'GET',
+    Authorization: 'Bearer ' + token,
+  },
+  heartbeatTimeout: 60000,
+});
+
+eventSource.onmessage = (result) => {
+  const data = JSON.parse(result.data);
+
+  if (data && data.type !== 'health.check') {
+    console.log('data', data);
+  }
+};
+
+eventSource.onerror = (err) => {
+  console.log('err', err);
+};
 ```
 
 <br />
 
-### Channels
+### Channel management
 
-**1. Query channels**
+#### 1. Query channels
 
-Get channels in your project. Here’s an example of how you can query the list of channels:
+Retrieve all channels and Drirect Messages in your project. Here’s an example of how to query the list of channels:
 
 ```javascript
 const filter = {
-  project_id: PROJECT_ID,
   type: ['messaging', 'team'],
   roles: ['owner', 'moder', 'member', 'pending'],
   other_roles: ['pending'], // optional
@@ -228,11 +264,10 @@ await chatClient.queryChannels(filter, sort, options);
 
 **Filter:**
 
-Type is object. The query filters to use. You can query on any of the custom fields you've defined on the Channel.
+Type: Object. The query filters to use. You can filter by any custom fields you've defined on the Channel.
 | Name | Type | Required | Description |
 | :-----------| :-- | :---------| :-----------|
-| project_id | string | Yes | Your project ID
-| type | array | No | The type of channel: messaging, team. Array is empty will get all channels.
+| type | array | No | The type of channel: messaging, team. If the array is empty, it will return all channels.
 | roles | array | No | This method is used to retrieve a list of channels that the current user is a part of. The API supports filtering channels based on the user's role within each channel, including roles such as `owner`, `moder`, `member`, and `pending`.<br /><br />`owner` - Retrieves a list of channels where the user's role is the owner. <br />`moder` - Retrieves a list of channels where the user's role is the moderator. <br />`member` - Retrieves a list of channels where the user's role is a member. <br /> `pending` - Retrieves a list of channels where the user's role is pending approval.
 | other_roles | array | No | This API allows you to retrieve a list of channels that you have created, with the ability to filter channels based on the roles of other users within the channel. The roles available for filtering include: `owner`, `moder`, `member`, and `pending`.<br /><br /> `owner` - Filter channels where the user is the channel owner.</br> `moder` - Filter channels where the user is a moderator.</br> `member` - Filter channels where the user is a member. </br> `pending` - Filter channels where the user is pending approval.
 | limit | integer | No | The maximum number of channels to retrieve in a single request.
@@ -240,7 +275,7 @@ Type is object. The query filters to use. You can query on any of the custom fie
 
 **Sort:**
 
-Type is object or array of objects. The sorting used for the channels matching the filters. Sorting is based on field and direction, multiple sorting options can be provided. You can sort based on `last_message_at`. Direction can be ascending (1) or descending (-1).
+Type: Object or array of objects. The sorting used for the channels that match the filters. Sorting is based on the field and direction, and multiple sorting options can be provided. You can sort based on fields such as `last_message_at`. Direction can be ascending (1) or descending (-1).
 
 ```javascript
 const sort = [{ last_message_at: -1 }];
@@ -248,7 +283,7 @@ const sort = [{ last_message_at: -1 }];
 
 **Options:**
 
-Type is object. This method can be used to fetch information about existing channels, including message counts, and other related details.
+Type: Object. This method can be used to fetch information about existing channels, including message counts and other related details.
 | Name | Type | Required | Description |
 | :-----------| :--- | :---------| :-----------|
 | message_limit | integer | No | The maximum number of messages to retrieve from each channel. If this parameter is not provided, the default number of messages or no limit will be applied.
@@ -257,21 +292,21 @@ Type is object. This method can be used to fetch information about existing chan
 const options = { message_limit: 25 };
 ```
 
-**2. Create new channel**
+#### 2. Create a New Channel
 
-Create a channel: choose Direct for 1-1 (messaging) or Group (team) for multiple users.
+To create a channel: choose Direct for 1-1 (messaging) or Channel (team) for multiple users.
 
-**New direct message:**
+**New direct message**
 
 ```javascript
 // channel type is messaging
 const channel = await chatClient.channel('messaging', {
   members: [userId, myUserId],
 });
-await channel.create({ project_id: PROJECT_ID });
+await channel.create();
 ```
 
-**New group:**
+**New channel**
 
 ```javascript
 // channel type is team
@@ -279,12 +314,12 @@ const channel = await chatClient.channel('team', {
   name: channel_name,
   members: [user_ids],
 });
-await channel.create({ project_id: PROJECT_ID });
+await channel.create();
 ```
 
-**3. Accept/Reject invite**
+#### 3. Accept/Reject Invite
 
-**Accept:**
+**Accept the invitation**
 
 ```javascript
 // initialize the channel
@@ -294,7 +329,7 @@ const channel = chatClient.channel(channel_type, channel_id);
 await channel.acceptInvite();
 ```
 
-**Reject:**
+**Reject the invitation**
 
 ```javascript
 // initialize the channel
@@ -304,16 +339,16 @@ const channel = chatClient.channel(channel_type, channel_id);
 await channel.rejectInvite();
 ```
 
-**4. Query a Channel**
+#### 4. Query a Channel
 
-Qeries the channel state and returns members, watchers and messages
+Queries the channel state and returns information about members, watchers and messages.
 
 ```javascript
 const channel = chatClient.channel(channel_type, channel_id);
-await channel.query({ project_id: PROJECT_ID });
+await channel.query();
 ```
 
-You can use conditional parameters to filter messages based on their message id.
+You can use conditional parameters to filter messages based on their message IDs.
 | Name | Type | Required | Description |
 | :---------| :----| :---------| :-----------|
 | id_lt | string | No | Filters messages with message id less than the specified value.
@@ -330,16 +365,125 @@ const messages = {
 
 const channel = chatClient.channel(channel_type, channel_id);
 await channel.query({
-  project_id: PROJECT_ID,
   messages, // optional
 });
 ```
 
+#### 5. Setting a channel
+
+The channel settings feature allows users to customize channel attributes such as name, description, membership permissions, and notification settings to suit their communication needs.
+
+**5.1. Edit channel information (name, avatar, description)**
+
+```javascript
+const payload = { name, image, description };
+
+await channel.update(payload);
+```
+
+| Name        | Type   | Required | Description                  |
+| :---------- | :----- | :------- | :--------------------------- |
+| name        | string | No       | Display name for the channel |
+| image       | string | No       | Avatar for the channel       |
+| description | string | No       | Description for the channel  |
+
+**5.2. Adding & Removing Channel Members**
+The addMembers() method adds specified users as members, while removeMembers() removes them.
+
+**Adding members**
+
+```javascript
+await channel.addMembers(userIds);
+```
+
+**Removing members**
+
+```javascript
+await channel.removeMembers(userIds);
+```
+
+**Leaving a channel**
+
+```javascript
+await channel.removeMembers(['my_user_id']);
+```
+
+| Name    | Type  | Required | Description                                 |
+| :------ | :---- | :------- | :------------------------------------------ |
+| userIds | array | Yes      | List user id you want to adding or removing |
+
+**5.3. Adding & Removing Moderators to a Channel**
+The addModerators() method adds a specified user as a Moderators (or updates their role to moderator if already members), while demoteModerators() removes the moderator status.
+
+**Adding a Moderator**
+
+```javascript
+await channel.addModerators(userIds);
+```
+
+**Removing a Moderator**
+
+```javascript
+await channel.demoteModerators(userIds);
+```
+
+| Name    | Type  | Required | Description                                 |
+| :------ | :---- | :------- | :------------------------------------------ |
+| userIds | array | Yes      | List user id you want to adding or removing |
+
+**5.4. Ban & Unban Channel Members**
+The ban and unban feature allows administrators to block or unblock members with the "member" role in a channel, managing their access rights.
+
+**Ban a Channel Member**
+
+```javascript
+await channel.banMembers(userIds);
+```
+
+**Unban a Channel Member**
+
+```javascript
+await channel.unbanMembers(userIds);
+```
+
+| Name    | Type  | Required | Description                           |
+| :------ | :---- | :------- | :------------------------------------ |
+| userIds | array | Yes      | List user id you want to ban or unban |
+
+**5.5. Channel Capabilities**
+This feature allows owner to configure permissions for members with the "member" role to send, edit, delete, and react to messages, ensuring chat content control.
+
+```javascript
+await channel.updateCapabilities(add_capabilities, remove_capabilities);
+```
+
+| Name                | Type  | Required | Description                       |
+| :------------------ | :---- | :------- | :-------------------------------- |
+| add_capabilities    | array | Yes      | Capabilities you want to adding   |
+| remove_capabilities | array | Yes      | Capabilities you want to removing |
+
+**Capabilities:**
+| Name | What it indicates
+| :---| :---
+| send-message | Ability to send a message
+| update-own-message | Ability to update own messages in the channel
+| delete-own-message | Ability to delete own messages from the channel
+| send-reaction | Ability to send reactions
+
+**5.6. Query Attachments in a channel**
+This feature allows users to view all media files shared in a channel, including images, videos, and audio.
+
+```javascript
+await channel.queryAttachmentMessages();
+```
+
 <br />
 
-### Messages
+### Message management
 
-**1. Send message**
+#### 1. Sending a message
+
+This feature allows user to send a message to a specified channel or DM:
 
 ```javascript
 await channel.sendMessage({
@@ -353,9 +497,9 @@ await channel.sendMessage({
 | :---------------- | :----- | :------- | :-------------------------------------------------------- |
 | text              | string | Yes      | Text that you want to send to the selected channel.       |
 | attachments       | array  | No       | A list of attachments (audio, videos, images, and files). |
-| quoted_message_id | string | No       | Message id to a message when you quote another message.   |
+| quoted_message_id | string | No       | The ID of the message that is being quoted.               |
 
-**Attachmens format**
+**Attachments Format**
 
 ```javascript
 const attachments = [
@@ -384,25 +528,33 @@ const attachments = [
 ];
 ```
 
-**2. Upload file**
+#### 2. Upload file
+
+This feature allows user to upload a file to the system. Maximum file size is 2GB
 
 ```javascript
 await channel.sendFile(file);
 ```
 
-**3. Edit message**
+#### 3. Edit message
+
+This feature allows user to edit the content of an existing message:
 
 ```javascript
 await channel.editMessage(message_id, text);
 ```
 
-**4. Delete message**
+#### 4. Delete message
+
+This feature allows user to delete an existing message:
 
 ```javascript
 await channel.deleteMessage(message_id);
 ```
 
-**5. Search message**
+#### 5. Search message
+
+This feature allows user to search for a specific message in a channel of DM:
 
 ```javascript
 await channel.searchMessage(search_term, offset);
@@ -413,29 +565,30 @@ await channel.searchMessage(search_term, offset);
 | search_term | string | Yes      | Keyword used to filter the messages.                      |
 | offset      | string | Yes      | Starting position for retrieving search data in the list. |
 
-**5. Unread messages**
-The Unread Message Count feature shows users how many messages they missed while offline. Once they reconnect or log into the app again, they can get the number of messages published in a given channel while they were gone.
+#### 6. Unread messages
+
+The Unread Message Count indicates how many messages were received wwhile a user was offline. After reconnecting or logging in, user can view the total number of missed messages in a channel or DM.
 
 **Get unread messages count (all channels)**
-`getUnreadCount()` returns info on all messages you didn't read on all joined channels. You can display this number on UI in the channel list of your chat app.
+`getUnreadCount()` returns information on all unread messages across all joined channels. You can display this number in the UI within the channel list of your chat app.
 
 ```javascript
 await chatClient.getUnreadCount(userId);
 ```
 
 **Marking a channel as read**
-You can mark all messages in a channel as read like this on the client-side:
+You can mark all messages in a channel as read on the client-side:
 
 ```javascript
 await channel.markRead();
 ```
 
 **Jump to last read message**
-This is how you can jump to the last read message inside a given channel:
+This is how you can jump to the last read message in a specific channel:
 
 ```javascript
 const channel = chatClient.channel(channel_type, channel_id);
-await channel.query({ project_id: PROJECT_ID });
+await channel.query();
 
 const lastReadMessageId = channel.state.read['<user id>'];
 await channel.state.loadMessageIntoState(lastReadMessageId);
@@ -443,16 +596,17 @@ await channel.state.loadMessageIntoState(lastReadMessageId);
 console.log(channel.state.messages);
 ```
 
-**6. Reactions**
+#### 7. Reactions
+
 The Reaction feature allows users to send, manage reactions on messages, and delete reactions when necessary.
 
-**Send reaction:**
+**Send a reaction:**
 
 ```javascript
 await channel.sendReaction(message_id, reaction_type);
 ```
 
-**Delete reaction:**
+**Delete a reaction:**
 
 ```javascript
 await channel.deleteReaction(message_id, reaction_type);
@@ -463,8 +617,9 @@ await channel.deleteReaction(message_id, reaction_type);
 | message_id    | string | Yes      | ID of the message to react to                                                  |
 | reaction_type | string | Yes      | Type of the reaction. User could have only 1 reaction of each type per message |
 
-**7. Typing Indicators**
-Typing indicators allow you to show to users who is currently typing in the channel.
+#### 8. Typing Indicators
+
+Typing indicators feature lets users see who is currently typing in the channel
 
 ```javascript
 // sends a typing.start event at most once every two seconds
@@ -495,120 +650,10 @@ channel.on('typing.stop', (event) => {
 
 <br />
 
-### Setting channel
-
-The channel settings feature allows users to customize channel attributes such as name, description, membership permissions, and notification settings to suit their communication needs.
-
-**1. Edit channel (name, avatar, description)**
-
-```javascript
-const payload = { name, image, description };
-
-await channel.update(payload);
-```
-
-| Name        | Type   | Required | Description                  |
-| :---------- | :----- | :------- | :--------------------------- |
-| name        | string | Yes      | Display name for the channel |
-| image       | string | No       | Avatar for the channel       |
-| description | string | No       | Description for the channel  |
-
-**2. Adding & Removing Channel Members**
-Using the addMembers() method adds the given users as members, while removeMembers() removes them.
-
-**Adding members**
-
-```javascript
-await channel.addMembers(userIds);
-```
-
-**Removing members**
-
-```javascript
-await channel.removeMembers(userIds);
-```
-
-**Leaving a channel**
-
-```javascript
-await channel.removeMembers(['my_user_id']);
-```
-
-| Name    | Type  | Required | Description                                 |
-| :------ | :---- | :------- | :------------------------------------------ |
-| userIds | array | Yes      | List user id you want to adding or removing |
-
-**3. Adding & Removing Moderators to a Channel**
-Using the addModerators() method adds the given users as moderators (or updates their role to moderator if already members), while demoteModerators() removes the moderator status.
-
-**Adding moderators**
-
-```javascript
-await channel.addModerators(userIds);
-```
-
-**Removing moderators**
-
-```javascript
-await channel.demoteModerators(userIds);
-```
-
-| Name    | Type  | Required | Description                                 |
-| :------ | :---- | :------- | :------------------------------------------ |
-| userIds | array | Yes      | List user id you want to adding or removing |
-
-**4. Ban & Unban Channel Members**
-The ban and unban feature allows administrators to block or unblock members with the "member" role in the chat room, controlling their access rights.
-
-**Ban:**
-
-```javascript
-await channel.banMembers(userIds);
-```
-
-**Unban**
-
-```javascript
-await channel.unbanMembers(userIds);
-```
-
-| Name    | Type  | Required | Description                           |
-| :------ | :---- | :------- | :------------------------------------ |
-| userIds | array | Yes      | List user id you want to ban or unban |
-
-**5. Channel Capabilities**
-A feature that allows owner to configure permissions for members with the "member" role to send, edit, delete, and react to messages, ensuring chat content control.
-
-```javascript
-await channel.updateCapabilities(add_capabilities, remove_capabilities);
-```
-
-| Name                | Type  | Required | Description                       |
-| :------------------ | :---- | :------- | :-------------------------------- |
-| add_capabilities    | array | Yes      | Capabilities you want to adding   |
-| remove_capabilities | array | Yes      | Capabilities you want to removing |
-
-**Capabilities:**
-| Name | What it indicates
-| :---| :---
-| send-message | Ability to send a message
-| update-own-message | Ability to update own messages in the channel
-| delete-own-message | Ability to delete own messages from the channel
-| send-reaction | Ability to send reactions
-
-**6. Query Attachments in channel**
-The media message display feature allows users to view media files such as images, videos, and audio within the chat, enhancing the interaction experience without needing to send content.
-
-```javascript
-await channel.queryAttachmentMessages();
-```
-
-<br />
-
 ### Events
 
-Events allow the client to stay up to date with changes to the chat. Examples are a new message, a reaction, or a member joining the channel.
-A full list of events is shown below. The next section of the documentation explains how to listen for events.
+Events keep the client updated with changes in a channel, such as new messages, reactions, or members joining the channel.
+A full list of events is shown below. The next section of the documentation explains how to listen for these events.
 | Event | Trigger | Recipients
 |:---|:----|:-----
 | `health.check` | every 30 second to confirm that the client connection is still alive | all clients
@@ -632,8 +677,9 @@ A full list of events is shown below. The next section of the documentation expl
 | `channel.deleted` | when a channel is deleted | clients watching the channel
 | `channel.updated` | when a channel is updated | clients watching the channel
 
-**1. Listening for Events**:
-As soon as you call watch on a Channel or queryChannels you’ll start to listen to these events. You can hook into specific events:
+#### 1. Listening for Events
+
+Once you call watch on a Channel or queryChannels, you will start listening for these events. You can then hook into specific events:
 
 ```javascript
 channel.on('message.deleted', (event) => {
@@ -649,8 +695,9 @@ channel.on((event) => {
 });
 ```
 
-**2. Client Events**:
-Not all events are specific to channels. Events such as the user's status has changed, the users' unread count has changed, and other notifications are sent as client events. These events can be listened to through the client directly:
+#### 2. Client Events
+
+Not all events are specific to channels. Events such as changes in the user's status,unread count, and other notifications are sent as client events. These events can be listened to directly through the client:
 
 ```javascript
 chatClient.on((event) => {
@@ -658,8 +705,9 @@ chatClient.on((event) => {
 });
 ```
 
-**3. Stop Listening for Events**:
-It is a good practice to unregister event handlers once they are not in use anymore. Doing so will save you from performance degradations coming from memory leaks or even from errors and exceptions (i.e. null pointer exceptions)
+#### 3. Stop listening for Events
+
+It is good practice to unregister event handlers when they are no longer in use. This helps prevent performance issue due to memory leaks and avoids potential errors and exceptions (i.e. null pointer exceptions)
 
 ```javascript
 // remove the handler from all client events

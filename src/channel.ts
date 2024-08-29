@@ -1036,7 +1036,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     // Make sure we wait for the connect promise if there is a pending one
     await this.getClient().wsPromise;
 
-    let project_id = options.project_id || this._client.project_id;
+    let project_id = this._client.projectId;
     let update_options = { ...options, project_id };
 
     let queryURL = `${this.getClient().baseURL}/channels/${this.type}`;

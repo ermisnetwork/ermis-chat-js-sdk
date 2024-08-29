@@ -229,6 +229,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   clientID?: string;
   configs: Configs<ErmisChatGenerics>;
   key: string;
+  projectId: string;
   listeners: Record<string, Array<(event: Event<ErmisChatGenerics>) => void>>;
   logger: Logger;
   /**
@@ -263,7 +264,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
   // Chain
   chains?: ChainsResponse<ErmisChatGenerics>;
-  project_id?: string;
   private nextRequestAbortController: AbortController | null = null;
 
   /**
@@ -285,11 +285,12 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    * @example <caption>secret is optional and only used in server side mode</caption>
    * new ErmisChat('api_key', "secret", { httpsAgent: customAgent })
    */
-  constructor(key: string, options?: ErmisChatOptions);
-  constructor(key: string, secret?: string, options?: ErmisChatOptions);
-  constructor(key: string, secretOrOptions?: ErmisChatOptions | string, options?: ErmisChatOptions) {
+  constructor(key: string, projectId: string, options?: ErmisChatOptions);
+  constructor(key: string, projectId: string, secret?: string, options?: ErmisChatOptions);
+  constructor(key: string, projectId: string, secretOrOptions?: ErmisChatOptions | string, options?: ErmisChatOptions) {
     // set the key
     this.key = key;
+    this.projectId = projectId;
     this.listeners = {};
     this.state = new ClientState<ErmisChatGenerics>();
     // a list of channels to hide ws events from
@@ -414,7 +415,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       joined: [],
       not_joined: [],
     };
-    this.project_id = ERMIS_PROJECT_ID;
   }
 
   /**
@@ -441,23 +441,26 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    */
   public static getInstance<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics>(
     key: string,
+    projectId: string,
     options?: ErmisChatOptions,
   ): ErmisChat<ErmisChatGenerics>;
   public static getInstance<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics>(
     key: string,
+    projectId: string,
     secret?: string,
     options?: ErmisChatOptions,
   ): ErmisChat<ErmisChatGenerics>;
   public static getInstance<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics>(
     key: string,
+    projectId: string,
     secretOrOptions?: ErmisChatOptions | string,
     options?: ErmisChatOptions,
   ): ErmisChat<ErmisChatGenerics> {
     if (!ErmisChat._instance) {
       if (typeof secretOrOptions === 'string') {
-        ErmisChat._instance = new ErmisChat<ErmisChatGenerics>(key, secretOrOptions, options);
+        ErmisChat._instance = new ErmisChat<ErmisChatGenerics>(key, projectId, secretOrOptions, options);
       } else {
-        ErmisChat._instance = new ErmisChat<ErmisChatGenerics>(key, secretOrOptions);
+        ErmisChat._instance = new ErmisChat<ErmisChatGenerics>(key, projectId, secretOrOptions);
       }
     }
 
@@ -1487,13 +1490,12 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/hi', null, opts).catch((e) => { });
+    this.doAxiosRequest('get', this.baseURL + '/hi', null, opts).catch((e) => {});
   }
 
   /**
    * queryUsers - Query users and watch user presence
    *
-   * @param {project_id} project_id Option number, just to filter users by project_id,(client doesn't nead to care about this)
    *
    * @return {Promise<{
    *data: Array<UserResponse<ErmisChatGenerics>>,
@@ -1503,7 +1505,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    *page_count: number,
    * }>} User Query Response
    */
-  async queryUsers(project_id?: string, page_size?: string, page?: number): Promise<UsersResponse> {
+  async queryUsers(page_size?: string, page?: number): Promise<UsersResponse> {
     const defaultOptions = {
       presence: false,
     };
@@ -1514,16 +1516,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     if (!this._hasConnectionID()) {
       defaultOptions.presence = false;
     }
-    let request_project_id = project_id || this.project_id;
+    let project_id = this.projectId;
     // Return a list of users
-    const data = await this.get<UsersResponse>(
-      this.baseURL + '/uss/v1/users',
-      {
-        request_project_id,
-        page,
-        page_size,
-      }
-    );
+    const data = await this.get<UsersResponse>(this.baseURL + '/uss/v1/users', {
+      project_id,
+      page,
+      page_size,
+    });
 
     this.state.updateUsers(data.data);
 
@@ -1531,30 +1530,28 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   }
 
   async queryUser(user_id: string): Promise<UserResponse<ErmisChatGenerics>> {
-    return await this.get<UserResponse<ErmisChatGenerics>>(
-      this.baseURL + '/uss/v1/users/' + user_id,
-      undefined,
-    );
+    return await this.get<UserResponse<ErmisChatGenerics>>(this.baseURL + '/uss/v1/users/' + user_id, undefined);
   }
-  async getBatchUsers(users: string[], page?: number, page_size?: number, project_id?: string): Promise<UsersResponse> {
-    let request_project_id = project_id || this.project_id;
+  async getBatchUsers(users: string[], page?: number, page_size?: number): Promise<UsersResponse> {
+    let project_id = this.projectId;
     return await this.post<UsersResponse>(
       this.baseURL + '/uss/v1/users/batch',
-      { users, project_id: request_project_id },
+      { users, project_id },
       { page, page_size },
     );
   }
-  async searchUsers(page: number, page_size: number, name?: string, project_id?: string): Promise<UsersResponse> {
-    let request_project_id = project_id || this.project_id;
-    return await this.post<UsersResponse>(
-      this.baseURL + '/uss/v1/users/search',
-      undefined,
-      { page, page_size, name, project_id: request_project_id },
-    );
+  async searchUsers(page: number, page_size: number, name?: string): Promise<UsersResponse> {
+    let project_id = this.projectId;
+    return await this.post<UsersResponse>(this.baseURL + '/uss/v1/users/search', undefined, {
+      page,
+      page_size,
+      name,
+      project_id,
+    });
   }
-  async queryContacts(projectID?: string): Promise<ContactResponse> {
-    let project_id = projectID || this.project_id;
-    return await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id },);
+  async queryContacts(): Promise<ContactResponse> {
+    let project_id = this.projectId;
+    return await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
   }
   async getChains(): Promise<ChainsResponse> {
     let chain_response = await this.get<ChainsResponse>(this.baseURL + '/uss/v1/users/chains');
@@ -1562,21 +1559,17 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     return chain_response;
   }
   _updateProjectID(project_id: string) {
-    this.project_id = project_id;
+    this.projectId = project_id;
   }
 
   async uploadFile(file: any) {
     const formData = new FormData();
     formData.append('avatar', file);
-    let response = await this.post<{ avatar: string }>(
-      this.baseURL + '/uss/v1/users/upload',
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+    let response = await this.post<{ avatar: string }>(this.baseURL + '/uss/v1/users/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
       },
-    );
+    });
     if (this.user) {
       this.user.avatar = response.avatar;
       const new_user = { ...this.user, avatar: response.avatar };
@@ -1592,10 +1585,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       name,
       about_me,
     };
-    let response = await this.patch<UserResponse<ErmisChatGenerics>>(
-      this.baseURL + '/uss/v1/users/update',
-      body,
-    );
+    let response = await this.patch<UserResponse<ErmisChatGenerics>>(this.baseURL + '/uss/v1/users/update', body);
     this.user = response;
     this._user = response;
     this.state.updateUser(response);
@@ -1669,7 +1659,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     if (!this._hasConnectionID()) {
       defaultOptions.watch = false;
     }
-    let project_id = filterConditions.project_id || this.project_id;
+    let project_id = this.projectId;
 
     // Return a list of channels
     const payload = {
@@ -2895,7 +2885,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       config: {},
     },
   ): AxiosRequestConfig {
-
     let token = this._getToken();
 
     if (!token?.startsWith('Bearer ')) {
@@ -2921,7 +2910,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     let user_service_params = {
       ...options.params,
       ...(axiosRequestConfigParams || {}),
-    }
+    };
 
     return {
       params: user_service_params,
