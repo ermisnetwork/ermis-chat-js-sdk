@@ -211,32 +211,25 @@ await chatClient.queryContacts();
 
 #### 7. Real-Time User Info Updates with EventSource
 
-Guide on using EventSource for real-time user info updates, enabling instant data synchronization and seamless user experience.
+User profile updates are received in real-time using Event Source, enabling automatic synchronization of user data changes.
 
-**Example**:
+**Connect**:
 
 ```javascript
-import { EventSourcePolyfill } from 'event-source-polyfill';
-
-const eventSource = new EventSourcePolyfill(`${BASE_URL}/uss/v1/sse/subscribe`, {
-  headers: {
-    method: 'GET',
-    Authorization: 'Bearer ' + token,
-  },
-  heartbeatTimeout: 60000,
-});
-
-eventSource.onmessage = (result) => {
-  const data = JSON.parse(result.data);
-
-  if (data && data.type !== 'health.check') {
-    console.log('data', data);
-  }
+const dataUser = (data) => {
+  console.log(data);
 };
+await chatClient.connectToSSE(dataUser);
+```
 
-eventSource.onerror = (err) => {
-  console.log('err', err);
-};
+| Name     | Type | Required | Description                                                                                                                                                                                                                    |
+| :------- | :--- | :------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| dataUser | func | No       | The **dataUser** function can be used to receive user profile update data via an Event Source connection. When an update event occurs, the relevant user profile data will be sent to this function and logged to the console. |
+
+**Disconnect**:
+
+```javascript
+await chatClient.disconnectFromSSE();
 ```
 
 <br />
@@ -302,21 +295,32 @@ To create a channel: choose Direct for 1-1 (messaging) or Channel (team) for mul
 ```javascript
 // channel type is messaging
 const channel = await chatClient.channel('messaging', {
-  members: [userId, myUserId],
+  members: ['user_id_1', 'my_user_id'],
 });
 await channel.create();
 ```
+
+| Name    | Type  | Required | Description                                                                   |
+| :------ | :---- | :------- | :---------------------------------------------------------------------------- |
+| members | array | Yes      | an array with two user IDs: the creator's user ID and the recipient's user ID |
 
 **New channel**
 
 ```javascript
 // channel type is team
 const channel = await chatClient.channel('team', {
-  name: channel_name,
-  members: [user_ids],
+  name: 'Ermis group',
+  members: ['user_id_1', 'user_id_2', 'user_id_3', ...],
 });
 await channel.create();
 ```
+
+| Name    | Type   | Required | Description                                      |
+| :------ | :----- | :------- | :----------------------------------------------- |
+| name    | string | Yes      | Display name for the channel                     |
+| members | array  | Yes      | List user id you want to adding for this channel |
+
+> **Note**: The channel is created, allowing only the creator's friends to be added, maintaining security and connection.
 
 #### 3. Accept/Reject Invite
 

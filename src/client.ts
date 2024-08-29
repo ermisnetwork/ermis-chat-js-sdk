@@ -1486,7 +1486,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       throw err;
     }
   }
-  public async connectToSSE(): Promise<void> {
+  public async connectToSSE(onCallBack?: (data: any) => void): Promise<void> {
     if (this.eventSource) {
       this.logger('info', 'client:connectToSSE() - SSE connection already established', {});
       return;
@@ -1497,9 +1497,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       token = `Bearer ${token}`;
     }
     const headers = {
+      method: 'GET',
       Authorization: token,
     };
-    this.eventSource = new EventSourcePolyfill(this.baseURL + '/uss/v1/sse/subscribe', { headers });
+    this.eventSource = new EventSourcePolyfill(this.baseURL + '/uss/v1/sse/subscribe', {
+      headers,
+      heartbeatTimeout: 60000,
+    });
     this.eventSource.onopen = () => {
       this.logger('info', 'client:connectToSSE() - SSE connection established', {});
     };
@@ -1507,14 +1511,14 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       this.logger('info', `client:connectToSSE() - SSE message received ${event}`, { event });
       const data = JSON.parse(event.data);
 
-      if (data.type === "AccountUserChainProjects") {
+      if (data.type === 'AccountUserChainProjects') {
         let user: UserResponse = {
           name: data.name,
           id: data.id,
           avatar: data.avatar,
           about_me: data.about_me,
           project_id: data.project_id,
-        }
+        };
 
         if (this.user?.id === user.id) {
           this.user = { ...this.user, ...user };
@@ -1524,15 +1528,21 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         }
 
         this.state.updateUser(user);
+        if (onCallBack) {
+          onCallBack(data);
+        }
       }
     };
     this.eventSource.onerror = (error) => {
       this.logger('error', `client:connectToSSE() - SSE connection error ${error}`, { error });
-      if (this.eventSource?.readyState === EventSource.CLOSED || this.eventSource?.readyState === EventSource.CONNECTING) {
+      if (
+        this.eventSource?.readyState === EventSource.CLOSED ||
+        this.eventSource?.readyState === EventSource.CONNECTING
+      ) {
         this.eventSource.close();
         setTimeout(() => {
           this.logger('info', 'client:connectToSSE() - Reconnecting to SSE', {});
-          this.connectToSSE();
+          this.connectToSSE(onCallBack);
         }, 3000);
       }
     };
@@ -1554,7 +1564,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
   }
 
   /**
@@ -1623,7 +1633,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     return chain_response;
   }
   /**
-   * 
+   *
    * @param chain_project includes chain_id and clients.
    * clients just includes updating client.
    * projects just includes updating project.
