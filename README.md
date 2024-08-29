@@ -10,6 +10,7 @@
 1.  [Requirements](#requirements)
 1.  [Getting Started](#getting-started)
 1.  [Features](#features)
+1.  [Error codes](#error-codes)
 
 ## Introduction
 
@@ -718,3 +719,34 @@ myClientEventListener.unsubscribe();
 // const myChannelEventListener = channel.on('connection.changed', myChannelEventHandler)
 myChannelEventListener.unsubscribe();
 ```
+
+## Error codes
+
+Below you can find the complete list of errors that are returned by the API together with the description, API code, and corresponding HTTP, Websocket status of each error.
+
+#### 1. HTTP codes
+
+| Name                      | HTTP Status Code | HTTP Status           | Ermis code | Description                                               |
+| :------------------------ | :--------------- | :-------------------- | :--------- | --------------------------------------------------------- |
+| InternalServerError       | 500              | Internal Server Error | 0          | Triggered when something goes wrong in our system         |
+| ServiceUnavailable        | 503              | Service Unavailable   | 1          | Triggered when our system is unavailable to call          |
+| Unauthorized              | 401              | Unauthorized          | 2          | Invalid JWT token                                         |
+| NotFound                  | 404              | Not Found             | 3          | Resource not found                                        |
+| InputError                | 400              | Bad Request           | 4          | When wrong data/parameter is sent to the API              |
+| ChannelNotFound           | 400              | Bad Request           | 5          | Channel is not existed                                    |
+| NoPermissionInChannel     | 400              | Bad Request           | 6          | No permission for this action in the channel              |
+| NotAMemberOfChannel       | 400              | Bad Request           | 7          | Not a member of channel                                   |
+| BannedFromChannel         | 400              | Bad Request           | 8          | User is banned from this channel                          |
+| HaveToAcceptInviteFirst   | 400              | Bad Request           | 9          | User must accept the invite to gain permission            |
+| DisabledChannelMemberCapa | 400              | Bad Request           | 10         | This action is disable for channel member role            |
+| AlreadyAMemberOfChannel   | 400              | Bad Request           | 11         | User is already part of the channel and cannot join again |
+
+#### 2. Websocket codes
+
+| Websocket Code | Message          | Description                                   |
+| :------------- | :--------------- | :-------------------------------------------- |
+| 1011           | Internal Error   | Return when something wrong in our system     |
+| 1006           | Abnormal Closure | Return when there is connection error         |
+| 1005           | Jwt Expire       | Return when jwt is expired                    |
+| 1003           | Unsupported Data | Return when client send non text data         |
+| 1000           | Normal Closure   | Return when client or server close connection |
