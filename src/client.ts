@@ -14,6 +14,7 @@ import { WSConnectionFallback } from './connection_fallback';
 import { Campaign } from './campaign';
 import { Segment } from './segment';
 import { isErrorResponse, isWSFailure } from './errors';
+import { EventSourcePolyfill } from 'event-source-polyfill';
 import {
   addFileToFormData,
   axiosParamsSerializer,
@@ -202,6 +203,7 @@ import {
   ServerType,
   UsersResponse,
   ChainsResponse,
+  ChainProjectResponse,
 } from './types';
 import { InsightMetrics } from './insights';
 import { Thread } from './thread';
@@ -261,6 +263,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   insightMetrics: InsightMetrics;
   defaultWSTimeoutWithFallback: number;
   defaultWSTimeout: number;
+
+  private eventSource: EventSource | null = null;
 
   // Chain
   chains?: ChainsResponse<ErmisChatGenerics>;
@@ -410,6 +414,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
      */
     this.logger = isFunction(inputOptions.logger) ? inputOptions.logger : () => null;
     this.recoverStateOnReconnect = this.options.recoverStateOnReconnect;
+
     this.chains = {
       chains: [],
       joined: [],
@@ -1481,7 +1486,66 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       throw err;
     }
   }
+  public async connectToSSE(): Promise<void> {
+    if (this.eventSource) {
+      this.logger('info', 'client:connectToSSE() - SSE connection already established', {});
+      return;
+    }
+    let token = this._getToken();
 
+    if (!token?.startsWith('Bearer ')) {
+      token = `Bearer ${token}`;
+    }
+    const headers = {
+      Authorization: token,
+    };
+    this.eventSource = new EventSourcePolyfill(this.baseURL + '/uss/v1/sse/subscribe', { headers });
+    this.eventSource.onopen = () => {
+      this.logger('info', 'client:connectToSSE() - SSE connection established', {});
+    };
+    this.eventSource.onmessage = (event) => {
+      this.logger('info', `client:connectToSSE() - SSE message received ${event}`, { event });
+      const data = JSON.parse(event.data);
+
+      if (data.type === "AccountUserChainProjects") {
+        let user: UserResponse = {
+          name: data.name,
+          id: data.id,
+          avatar: data.avatar,
+          about_me: data.about_me,
+          project_id: data.project_id,
+        }
+
+        if (this.user?.id === user.id) {
+          this.user = { ...this.user, ...user };
+        }
+        if (this._user?.id === user.id) {
+          this._user = { ...this._user, ...user };
+        }
+
+        this.state.updateUser(user);
+      }
+    };
+    this.eventSource.onerror = (error) => {
+      this.logger('error', `client:connectToSSE() - SSE connection error ${error}`, { error });
+      if (this.eventSource?.readyState === EventSource.CLOSED || this.eventSource?.readyState === EventSource.CONNECTING) {
+        this.eventSource.close();
+        setTimeout(() => {
+          this.logger('info', 'client:connectToSSE() - Reconnecting to SSE', {});
+          this.connectToSSE();
+        }, 3000);
+      }
+    };
+  }
+  public async disconnectFromSSE(): Promise<void> {
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+      this.logger('info', 'client:disconnectFromSSE() - SSE connection closed', {});
+    } else {
+      this.logger('info', 'client:disconnectFromSSE() - SSE connection already closed', {});
+    }
+  }
   /**
    * Check the connectivity with server for warmup purpose.
    *
@@ -1490,7 +1554,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/hi', null, opts).catch((e) => {});
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
   }
 
   /**
@@ -1557,6 +1621,17 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     let chain_response = await this.get<ChainsResponse>(this.baseURL + '/uss/v1/users/chains');
     this.chains = chain_response;
     return chain_response;
+  }
+  /**
+   * 
+   * @param chain_project includes chain_id and clients.
+   * clients just includes updating client.
+   * projects just includes updating project.
+   */
+  async joinChainProject(project_id: string): Promise<ChainsResponse> {
+    let chains_response = await this.post<ChainsResponse>(this.baseURL + '/uss/v1/users/join', { project_id });
+    this.chains = chains_response;
+    return chains_response;
   }
   _updateProjectID(project_id: string) {
     this.projectId = project_id;
