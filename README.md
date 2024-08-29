@@ -160,6 +160,33 @@ await chatClient.queryUsers(page_size, page);
 | page      | number | No       | The page number you want to query     |
 | page_size | number | No       | The number of users returned per page |
 
+**Response**
+
+```javascript
+{
+  "data": [
+      {
+        "id": "0x9add536fb802c3eecdb2d94a29653e9b42cc4291",
+        "name": "0x9add536fb802c3eecdb2d94a29653e9b42cc4291",
+        "avatar": null,
+        "about_me": null,
+        "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+      },
+      {
+        "id": "0x360a45f70de193090a1b13da8393a02f9119aecd",
+        "name": "vinhtc27",
+        "avatar": "https://hn.storage.weodata.vn/namwifi/ermis/staging/wLdIngOpu8j9mp49oOhwWOzQyO31qjLK",
+        "about_me": null,
+        "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+      },
+  ],
+  "count": 8,
+  "total": 8,
+  "page": 1,
+  "page_count": 1
+}
+```
+
 #### 2. Search users
 
 ```javascript
@@ -171,6 +198,33 @@ await chatClient.searchUsers(page, page_size, name);
 | page      | number | No       | The page number you want to query     |
 | page_size | number | No       | The number of users returned per page |
 | name      | string | Yes      | User name you want to query           |
+
+**Response**
+
+```javascript
+{
+  "data": [
+      {
+        "id": "0x9add536fb802c3eecdb2d94a29653e9b42cc4291",
+        "name": "0x9add536fb802c3eecdb2d94a29653e9b42cc4291",
+        "avatar": null,
+        "about_me": null,
+        "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+      },
+      {
+        "id": "0x360a45f70de193090a1b13da8393a02f9119aecd",
+        "name": "vinhtc27",
+        "avatar": "https://hn.storage.weodata.vn/namwifi/ermis/staging/wLdIngOpu8j9mp49oOhwWOzQyO31qjLK",
+        "about_me": null,
+        "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+      },
+  ],
+  "count": 8,
+  "total": 8,
+  "page": 1,
+  "page_count": 1
+}
+```
 
 #### 3. Get users by userIds
 
@@ -184,10 +238,49 @@ await chatClient.getBatchUsers(users, page, page_size);
 | page_size | number | No       | The number of users returned per page |
 | users     | array  | Yes      | List user id you want to query        |
 
+**Response**
+
+```javascript
+{
+  "data": [
+      {
+        "id": "0x9add536fb802c3eecdb2d94a29653e9b42cc4291",
+        "name": "0x9add536fb802c3eecdb2d94a29653e9b42cc4291",
+        "avatar": null,
+        "about_me": null,
+        "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+      },
+      {
+        "id": "0x360a45f70de193090a1b13da8393a02f9119aecd",
+        "name": "vinhtc27",
+        "avatar": "https://hn.storage.weodata.vn/namwifi/ermis/staging/wLdIngOpu8j9mp49oOhwWOzQyO31qjLK",
+        "about_me": null,
+        "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+      },
+  ],
+  "count": 8,
+  "total": 8,
+  "page": 1,
+  "page_count": 1
+}
+```
+
 #### 4. Get user by user id
 
 ```javascript
 await chatClient.queryUser(user_id);
+```
+
+**Response**
+
+```javascript
+{
+  "name": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+  "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+  "avatar": null,
+  "about_me": null,
+  "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+}
 ```
 
 #### 5. Update Personal Profile
@@ -207,6 +300,19 @@ Get all your contacts in a project:
 
 ```javascript
 await chatClient.queryContacts();
+```
+
+**Response**
+
+```javascript
+{
+  "project_id_user_ids": {
+    "b44937e4-c0d4-4a73-847c-3730a923ce83": [
+      "0x8ba208a3bfb80edd7fc5febf5666e146a3c8722d"
+    ]
+  },
+  "duration": "1ms"
+}
 ```
 
 #### 7. Real-Time User Info Updates with EventSource
@@ -482,6 +588,30 @@ This feature allows users to view all media files shared in a channel, including
 await channel.queryAttachmentMessages();
 ```
 
+**Response**
+
+```javascript
+{
+  "attachments": [
+    {
+      "id": "3fe7e002-2c71-48bc-b051-a284825969a7",
+      "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+      "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+      "url": "https://hn.storage.weodata.vn/belochat/bellboy/test/messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd/3fe7e002-2c71-48bc-b051-a284825969a7",
+      "thumb_url": "",
+      "file_name": "about3.png",
+      "content_type": "image/png",
+      "content_length": 34781,
+      "content_disposition": "inline; filename=\"about3.png\"",
+      "message_id": "1b1d81fd-3bfe-4ac0-ad83-4f7b99ce2252",
+      "created_at": "2024-08-29T11:22:41.210527653+00:00",
+      "updated_at": "2024-08-29T11:22:41.210531736+00:00"
+    },
+  ],
+  "duration": "1ms"
+}
+```
+
 <br />
 
 ### Message management
@@ -504,20 +634,38 @@ await channel.sendMessage({
 | attachments       | array  | No       | A list of attachments (audio, videos, images, and files). |
 | quoted_message_id | string | No       | The ID of the message that is being quoted.               |
 
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "99873843-757f-4b3a-95d0-0773314fb115",
+    "text": "Hello",
+    "type": "regular",
+    "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+    "user": {
+        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "created_at": "2024-08-29T10:44:40.022289401+00:00"
+  },
+  "duration": "0ms"
+}
+```
+
 **Attachments Format**
 
 ```javascript
 const attachments = [
   {
     type: 'image', // Upload file image
-    image_url: 'https://bit.ly/2K74TaG',
+    image_url: 'https://bit.ly/2K74TaG', // url from response upload file
     title: 'photo.png',
     file_size: 2020,
     mime_type: 'image/png',
   },
   {
     type: 'video', // Upload file video
-    asset_url: 'https://bit.ly/2K74TaG',
+    asset_url: 'https://bit.ly/2K74TaG', // url from response upload file
     file_size: 10000,
     mime_type: 'video/mp4',
     title: 'video name',
@@ -525,12 +673,19 @@ const attachments = [
   },
   {
     type: 'file', // Upload another file
-    asset_url: 'https://bit.ly/3Agxsrt',
+    asset_url: 'https://bit.ly/3Agxsrt', // url from response upload file
     file_size: 2000,
     mime_type: 'application/msword',
     title: 'file name',
   },
 ];
+```
+
+**Get thumb blob from video**
+Extract a thumbnail from a video file, converting it to a Blob if the uploaded file is a video. After upload file
+
+```javascript
+await channel.getThumbBlobVideo(file);
 ```
 
 #### 2. Upload file
@@ -541,6 +696,15 @@ This feature allows user to upload a file to the system. Maximum file size is 2G
 await channel.sendFile(file);
 ```
 
+**Response**
+
+```javascript
+{
+  "file": "https://hn.storage.weodata.vn/belochat/bellboy/test/team:b44937e4-c0d4-4a73-847c-3730a923ce83:ac7018e7-d398-4053-80f0-116aefc80682/5295276b-41d4-4738-b9fd-7b2f3c005a23",
+  "duration": "277ms"
+}
+```
+
 #### 3. Edit message
 
 This feature allows user to edit the content of an existing message:
@@ -549,12 +713,48 @@ This feature allows user to edit the content of an existing message:
 await channel.editMessage(message_id, text);
 ```
 
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "99873843-757f-4b3a-95d0-0773314fb115",
+    "text": "Hello",
+    "type": "regular",
+    "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+    "user": {
+        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "created_at": "2024-08-29T10:44:40.022289401+00:00"
+  },
+  "duration": "0ms"
+}
+```
+
 #### 4. Delete message
 
 This feature allows user to delete an existing message:
 
 ```javascript
 await channel.deleteMessage(message_id);
+```
+
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "99873843-757f-4b3a-95d0-0773314fb115",
+    "text": "Hello",
+    "type": "regular",
+    "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+    "user": {
+        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "created_at": "2024-08-29T10:44:40.022289401+00:00"
+  },
+  "duration": "0ms"
+}
 ```
 
 #### 5. Search message
@@ -570,25 +770,92 @@ await channel.searchMessage(search_term, offset);
 | search_term | string | Yes      | Keyword used to filter the messages.                      |
 | offset      | string | Yes      | Starting position for retrieving search data in the list. |
 
+**Response**
+
+```javascript
+{
+  "search_result": {
+    "limit": 25,
+    "offset": 0,
+    "total": 3,
+    "messages": [
+      {
+          "id": "53cd8db1-117e-4409-817c-025a491f2064",
+          "text": "tuan",
+          "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+          "created_at": "2024-08-29T10:56:45.474470888+00:00"
+      },
+      {
+          "id": "c046f53c-22cd-4c87-9686-0e13a3d9b796",
+          "text": "tuan 1",
+          "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+          "created_at": "2024-08-29T10:56:46.476760621+00:00"
+      },
+      {
+          "id": "b9339abe-eb4f-43a7-954b-9397bf1a77ca",
+          "text": "tuan 2",
+          "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+          "created_at": "2024-08-29T10:56:47.392938048+00:00"
+      }
+    ]
+  },
+  "duration": "16ms"
+}
+```
+
 #### 6. Unread messages
 
 The Unread Message Count indicates how many messages were received wwhile a user was offline. After reconnecting or logging in, user can view the total number of missed messages in a channel or DM.
 
-**Get unread messages count (all channels)**
+**6.1 Get unread messages count (all channels)**
 `getUnreadCount()` returns information on all unread messages across all joined channels. You can display this number in the UI within the channel list of your chat app.
 
 ```javascript
 await chatClient.getUnreadCount(userId);
 ```
 
-**Marking a channel as read**
+**Response**
+
+```javascript
+{
+  "total_unread_count": 0,
+  "total_unread_threads_count": 0,
+  "channels": [
+    {
+      "channel_id": "b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+      "unread_count": 0,
+      "last_read_message_id": "b9339abe-eb4f-43a7-954b-9397bf1a77ca"
+    },
+    {
+      "channel_id": "b44937e4-c0d4-4a73-847c-3730a923ce83:ac7018e7-d398-4053-80f0-116aefc80682",
+      "unread_count": 0
+    }
+  ],
+  "channel_type": [
+    {
+      "channel_type": "messaging",
+      "channel_count": 1,
+      "unread_count": 0
+    },
+    {
+      "channel_type": "team",
+      "channel_count": 1,
+      "unread_count": 0
+    }
+  ],
+  "threads": [],
+  "duration": "0ms"
+}
+```
+
+**6.2 Marking a channel as read**
 You can mark all messages in a channel as read on the client-side:
 
 ```javascript
 await channel.markRead();
 ```
 
-**Jump to last read message**
+**6.3 Jump to last read message**
 This is how you can jump to the last read message in a specific channel:
 
 ```javascript
@@ -609,6 +876,49 @@ The Reaction feature allows users to send, manage reactions on messages, and del
 
 ```javascript
 await channel.sendReaction(message_id, reaction_type);
+```
+
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "b9339abe-eb4f-43a7-954b-9397bf1a77ca",
+    "text": "tuan 2",
+    "type": "regular",
+    "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+    "user": {
+        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "created_at": "2024-08-29T10:56:47.392938048+00:00",
+    "latest_reactions": [
+        {
+          "message_id": "b9339abe-eb4f-43a7-954b-9397bf1a77ca",
+          "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+          "user": {
+              "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+          },
+          "type": "love",
+          "created_at": "2024-08-29T11:01:04.533983699+00:00",
+          "updated_at": "2024-08-29T11:01:04.533987884+00:00"
+        }
+    ],
+    "reaction_counts": {
+        "love": 1
+    }
+  },
+  "reaction": {
+    "message_id": "b9339abe-eb4f-43a7-954b-9397bf1a77ca",
+    "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+    "user": {
+        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "type": "love",
+    "created_at": "2024-08-29T11:01:04.533983699+00:00",
+    "updated_at": "2024-08-29T11:01:04.533987884+00:00"
+  },
+  "duration": "21ms"
+}
 ```
 
 **Delete a reaction:**
