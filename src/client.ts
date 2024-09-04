@@ -1508,8 +1508,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       this.logger('info', 'client:connectToSSE() - SSE connection established', {});
     };
     this.eventSource.onmessage = (event) => {
+      this.logger('info', `client:connectToSSE() - SSE message received event :  ${JSON.stringify(event)}`, { event });
+
       const data = JSON.parse(event.data);
-      this.logger('info', `client:connectToSSE() - SSE message received event :  ${data}`, { event });
 
       if (data.type === 'AccountUserChainProjects') {
         let user: UserResponse = {
@@ -1534,7 +1535,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       }
     };
     this.eventSource.onerror = (event: any) => {
-      this.logger('error', `client:connectToSSE() - SSE connection error : ${event.data} `, { event });
+      this.logger('error', `client:connectToSSE() - SSE connection error : ${JSON.stringify(event)} `, { event });
       if (event.status === 401) {
         this.logger('error', 'client:connectToSSE() - Unauthorized (401). Aborting the connection.', {});
         this.disconnectFromSSE();
