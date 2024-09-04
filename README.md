@@ -1059,6 +1059,25 @@ channel.on('typing.stop', (event) => {
 });
 ```
 
+#### 9. System message
+
+Below you can find the complete list of system message that are returned by messages from channel. You can define from syntax message by description.
+
+| Name                            | Syntax                   | Description                                       |
+| :------------------------------ | :----------------------- | :------------------------------------------------ |
+| UpdateChannelName               | `1 user_id channel_name` | Member X updated name of channel                  |
+| UpdateChannelImage              | `2 user_id`              | Member X updated image of channel                 |
+| UpdateChannelDescription        | `3 user_id`              | Member X updated description of channel           |
+| MemberRemoved                   | `4 user_id`              | Member X has been removed from this channel       |
+| MemberBanned                    | `5 user_id`              | Member X has been banned from interacting         |
+| MemberUnbanned                  | `6 user_id`              | Member X has been unbanned from interacting       |
+| MemberPromoted                  | `7 user_id`              | Member X has been assigned as the moderator       |
+| MemberDemoted                   | `8 user_id`              | Member X has been demoted to member               |
+| UpdateChannelMemberCapabilities | `9 user_id`              | Member X has updated member permission of channel |
+| InviteAccepted                  | `10 user_id`             | Member X has joined this channel                  |
+| InviteRejected                  | `11 user_id`             | Member X has rejected to join this channel        |
+| MemberLeave                     | `12 user_id`             | Member X has leaved this channel                  |
+
 <br />
 
 ### Events
