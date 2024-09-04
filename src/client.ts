@@ -264,7 +264,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   defaultWSTimeoutWithFallback: number;
   defaultWSTimeout: number;
 
-  private eventSource: EventSource | null = null;
+  private eventSource: EventSourcePolyfill | null = null;
 
   // Chain
   chains?: ChainsResponse<ErmisChatGenerics>;
@@ -1508,8 +1508,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       this.logger('info', 'client:connectToSSE() - SSE connection established', {});
     };
     this.eventSource.onmessage = (event) => {
-      this.logger('info', `client:connectToSSE() - SSE message received ${event}`, { event });
       const data = JSON.parse(event.data);
+      this.logger('info', `client:connectToSSE() - SSE message received event :  ${data}`, { event });
 
       if (data.type === 'AccountUserChainProjects') {
         let user: UserResponse = {
@@ -1533,11 +1533,14 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         }
       }
     };
-    this.eventSource.onerror = (error) => {
-      this.logger('error', `client:connectToSSE() - SSE connection error ${error}`, { error });
-      if (
-        this.eventSource?.readyState === EventSource.CLOSED ||
-        this.eventSource?.readyState === EventSource.CONNECTING
+    this.eventSource.onerror = (event: any) => {
+      this.logger('error', `client:connectToSSE() - SSE connection error : ${event.data} `, { event });
+      if (event.status === 401) {
+        this.logger('error', 'client:connectToSSE() - Unauthorized (401). Aborting the connection.', {});
+        this.disconnectFromSSE();
+      } else if (
+        this.eventSource?.readyState === EventSourcePolyfill.CLOSED ||
+        this.eventSource?.readyState === EventSourcePolyfill.CONNECTING
       ) {
         this.eventSource.close();
         setTimeout(() => {
@@ -1564,7 +1567,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
   }
 
   /**
