@@ -71,11 +71,15 @@ You need to install WalletConnect to sign in and login to the Chat SDK. For more
 
 ### Step 4: Integrate Login via Wallet
 
-After installing WalletConnect, import the WalletConnect to initialize it:
+After installing WalletConnect, you need to import `ErmisAuth` from Ermis to connect to the login flow in Ermis Chat.:
 
 ```javascript
-import { WalletConnect } from 'ermis-chat-js-sdk';
-const authInstance = WalletConnect.getInstance(API_KEY, address);
+import { ErmisAuth } from 'ermis-chat-js-sdk';
+const options = {
+  baseURL: BASE_URL,
+}; // optional
+
+const authInstance = ErmisAuth.getInstance(API_KEY, address, options);
 ```
 
 #### 4.1: Create challenge
@@ -86,12 +90,99 @@ Create challenge message before signing with the wallet:
 const challenge = await authInstance.startAuth();
 ```
 
+**Response**
+
+```javascript
+{
+    "domain": {
+        "name": "Defguard",
+        "version": "1"
+    },
+    "types": {
+        "EIP712Domain": [
+            {
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "name": "version",
+                "type": "string"
+            }
+        ],
+        "ProofOfOwnership": [
+            {
+                "name": "wallet",
+                "type": "address"
+            },
+            {
+                "name": "content",
+                "type": "string"
+            },
+            {
+                "name": "nonce",
+                "type": "string"
+            }
+        ]
+    },
+    "primaryType": "ProofOfOwnership",
+    "message": {
+        "wallet": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+        "content": "Please read this carefully:Click to sign to prove you are in possesion of your private key to the account.This request will not trigger a blockchain transaction or cost any gas fees.",
+        "nonce": "123b92be27edefdfd08395bd52b58f18544fb29dedd304bf33965ca04b050f91"
+    }
+}
+```
+
 #### 4.2: Sign wallet and Get Token
 
 After receiving the challenge message, sign the wallet to get the signature using [useSignTypedData](https://wagmi.sh/react/api/hooks/useSignTypedData), then retrieve the token:
 
+**Example**:
+
 ```javascript
-const response = await authInstance.getAuth(api_key, address, signature);
+import { useSignTypedData, useAccount } from 'wagmi';
+
+function App() {
+  const { signTypedData } = useSignTypedData();
+  const { connector } = useAccount();
+
+  const onSignMessage = () => {
+    const { types, domain, primaryType, message } = challenge;
+
+    let signature = '';
+    signTypedDataAsync(
+      {
+        types,
+        domain,
+        connector,
+        primaryType,
+        message,
+      },
+      {
+        onSuccess: (s) => {
+          signature = s;
+        },
+      },
+    );
+
+    if (signature) {
+      const response = await authInstance.getAuth(signature); // get token
+    }
+  };
+
+  return <button onClick={onSignMessage}>Sign message</button>;
+}
+```
+
+**Response**
+
+```javascript
+{
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiMHg4ZWI3MTgwMzNiNGEzYzVmOGJkZWExNzczZGVkMDI1OWIyMzAwZjVkIiwiY2xpZW50X2lkIjoiNmZiZGVjYjAtMWVjOC00ZTMyLTk5ZDctZmYyNjgzZTMwOGI3IiwiY2hhaW5faWQiOjAsInByb2plY3RfaWQiOiJiNDQ5MzdlNC1jMGQ0LTRhNzMtODQ3Yy0zNzMwYTkyM2NlODMiLCJhcGlrZXkiOiJrVUNxcWJmRVF4a1pnZTdISERGY0l4Zm9IenFTWlVhbSIsImVybWlzIjp0cnVlLCJleHAiOjE4MjU1MzQ4MjI2NDMsImFkbWluIjpmYWxzZSwiZ2F0ZSI6ZmFsc2V9.nP2pIx1PAG-GrjNPgh8pJNfMfL-rX8YFpsDB-yFKjQs",
+  "refresh_token": "Aeqds63dfXXKqGkUrgsS6K2O",
+  "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+  "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+}
 ```
 
 ### Step 5: Import the Chat SDk
@@ -115,12 +206,17 @@ Once initialized, you must specify the current user with connectUser:
 await chatClient.connectUser(
   {
     api_key: API_KEY,
-    id: address, // your address
-    name: address,
+    id: user_id,
+    name: user_id,
   },
-  `Bearer ${token}`,
+  token,
 );
 ```
+
+| Name    | Type   | Required | Description                                               |
+| :------ | :----- | :------- | :-------------------------------------------------------- |
+| user_id | string | Yes      | User ID obtained from the `getAuth` function              |
+| token   | string | Yes      | Authentication token obtained from the `getAuth` function |
 
 ### Step 6: Sending your first message
 
