@@ -1508,9 +1508,10 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       this.logger('info', 'client:connectToSSE() - SSE connection established', {});
     };
     this.eventSource.onmessage = (event) => {
-      this.logger('info', `client:connectToSSE() - SSE message received event :  ${JSON.stringify(event.data)}`, { event });
 
       const data = JSON.parse(event.data);
+
+      this.logger('info', `client:connectToSSE() - SSE message received event :  ${JSON.stringify(data)}`, { event });
 
       if (data.type === 'AccountUserChainProjects') {
         let user: UserResponse = {
