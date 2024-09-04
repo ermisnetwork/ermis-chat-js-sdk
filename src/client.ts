@@ -476,9 +476,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   devToken(userID: string) {
     return DevToken(userID);
   }
-  // async getRefreshToken(refresh_token: string) {
-  //   return await this.post<APIResponse>(this.baseURL + '/token', { refresh_token });
-  // }
+  async refreshNewToken(refresh_token: string) {
+    return await this.post<APIResponse>(this.baseURL + '/uss/v1/refresh_token', { refresh_token });
+  }
   getAuthType() {
     return this.anonymous ? 'anonymous' : 'jwt';
   }
