@@ -26,10 +26,8 @@ export class ClientState<ErmisChatGenerics extends ExtendableGenerics = DefaultG
     if (user != null) {
       if (this.users[user.id]) {
         // Update existing user's fields, because the user is updated from 2 diffferent servers
-        // const updatedUser = { ...this.users[user.id], ...user };
-        // this.users[user.id] = updatedUser;
-        const { id, ...userWithoutId } = user;
-        Object.assign(this.users[user.id], userWithoutId);
+        const updatedUser = { ...this.users[user.id], ...user };
+        this.users[user.id] = updatedUser;
       } else {
         // Add new user
         this.users[user.id] = user;

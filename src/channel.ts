@@ -1090,8 +1090,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         const user = this.getClient().state.users[userId] || newStateUsers[userId];
 
         if (user && member.user) {
-          const { id, ...userWithoutId } = user;
-          Object.assign(member.user, userWithoutId);
+          const updatedUser = { ...member.user, ...user };
+          member.user = updatedUser;
         }
       });
 
