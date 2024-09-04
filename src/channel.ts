@@ -1057,11 +1057,44 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     });
 
     // update the channel id if it was missing
+
     if (!this.id) {
       this.id = state.channel.id;
       this.cid = state.channel.cid;
-      // set the channel as active...
 
+      // update member profiles with user information
+      const newStateUserIDs: string[] = [];
+
+      state.members.forEach((member) => {
+        const userId = member.user?.id || "";
+        const user = this.getClient().state.users[userId];
+
+        if (!user) {
+          newStateUserIDs.push(userId);
+        }
+      });
+
+      let newStateUsers: { [key: string]: any } = {};
+      if (newStateUserIDs.length > 0) {
+        // Fetch user information if not found
+        const fetchedUsers = await this.getClient().getBatchUsers(newStateUserIDs);
+        fetchedUsers.data.forEach((user) => {
+          this.getClient().state.updateUser(user);
+          newStateUsers[user.id] = user;
+        });
+      }
+
+      // Update member profiles with user information
+      state.members.forEach((member) => {
+        const userId = member.user?.id || "";
+        const user = this.getClient().state.users[userId] || newStateUsers[userId];
+
+        if (user && member.user) {
+          Object.assign(member.user, user);
+        }
+      });
+
+      // set the channel as active...
       const membersStr = state.members
         .map((member) => member.user_id || member.user?.id)
         .sort()

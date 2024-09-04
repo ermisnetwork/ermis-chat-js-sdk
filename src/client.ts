@@ -204,6 +204,7 @@ import {
   UsersResponse,
   ChainsResponse,
   ChainProjectResponse,
+  ChannelMemberResponse,
 } from './types';
 import { InsightMetrics } from './insights';
 import { Thread } from './thread';
@@ -475,7 +476,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   devToken(userID: string) {
     return DevToken(userID);
   }
-
+  // async getRefreshToken(refresh_token: string) {
+  //   return await this.post<APIResponse>(this.baseURL + '/token', { refresh_token });
+  // }
   getAuthType() {
     return this.anonymous ? 'anonymous' : 'jwt';
   }
@@ -1609,28 +1612,48 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   }
 
   async queryUser(user_id: string): Promise<UserResponse<ErmisChatGenerics>> {
-    return await this.get<UserResponse<ErmisChatGenerics>>(this.baseURL + '/uss/v1/users/' + user_id, undefined);
+    const project_id = this.projectId;
+
+    const userResponse = await this.get<UserResponse<ErmisChatGenerics>>(this.baseURL + '/uss/v1/users/' + user_id, { project_id });
+
+    this.state.updateUser(userResponse);
+    return userResponse;
   }
+
   async getBatchUsers(users: string[], page?: number, page_size?: number): Promise<UsersResponse> {
     let project_id = this.projectId;
-    return await this.post<UsersResponse>(
+
+    const usersRepsonse = await this.post<UsersResponse>(
       this.baseURL + '/uss/v1/users/batch',
       { users, project_id },
       { page, page_size },
     );
+
+    this.state.updateUsers(usersRepsonse.data);
+
+    return usersRepsonse;
   }
   async searchUsers(page: number, page_size: number, name?: string): Promise<UsersResponse> {
     let project_id = this.projectId;
-    return await this.post<UsersResponse>(this.baseURL + '/uss/v1/users/search', undefined, {
+
+    const usersResponse = await this.post<UsersResponse>(this.baseURL + '/uss/v1/users/search', undefined, {
       page,
       page_size,
       name,
       project_id,
     });
+
+    this.state.updateUsers(usersResponse.data);
+
+    return usersResponse;
   }
   async queryContacts(): Promise<ContactResponse> {
     let project_id = this.projectId;
-    return await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
+    const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
+    if (contactResponse.user_ids.length !== 0) {
+      await this.getBatchUsers(contactResponse.user_ids, 1, 100);
+    }
+    return contactResponse;
   }
   async getChains(): Promise<ChainsResponse> {
     let chain_response = await this.get<ChainsResponse>(this.baseURL + '/uss/v1/users/chains');
