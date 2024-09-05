@@ -1650,8 +1650,25 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   async queryContacts(): Promise<ContactResponse> {
     let project_id = this.projectId;
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
-    if (contactResponse.user_ids.length !== 0) {
-      await this.getBatchUsers(contactResponse.user_ids, 1, 100);
+    const userIDs = contactResponse.project_id_user_ids[project_id];
+
+    if (userIDs.length !== 0) {
+
+      const newStateUserIDs: string[] = [];
+
+      userIDs.forEach((userID) => {
+        const user = this.state.users[userID];
+        if (!user) {
+          newStateUserIDs.push(userID);
+        }
+      });
+
+      if (newStateUserIDs.length > 0) {
+        const fetchedUsers = await this.getBatchUsers(newStateUserIDs);
+        fetchedUsers.data.forEach((user) => {
+          this.state.updateUser(user);
+        });
+      }
     }
     return contactResponse;
   }

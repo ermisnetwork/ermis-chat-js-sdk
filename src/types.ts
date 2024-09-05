@@ -835,9 +835,13 @@ export type UserResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultG
 export type Contact = {
   project_id?: string;
 };
-export type ContactResponse = {
-  user_ids: string[];
+
+export type ContactResponse = APIResponse & {
+  project_id_user_ids: {
+    [key: string]: string[];
+  };
 };
+
 export type PrivacySettings = {
   read_receipts?: {
     enabled?: boolean;
