@@ -1504,7 +1504,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       this.logger('info', 'client:connectToSSE() - SSE connection established', {});
     };
     this.eventSource.onmessage = (event) => {
-
       const data = JSON.parse(event.data);
 
       this.logger('info', `client:connectToSSE() - SSE message received event :  ${JSON.stringify(data)}`, { event });
@@ -1565,7 +1564,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
   }
 
   /**
@@ -1607,7 +1606,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   async queryUser(user_id: string): Promise<UserResponse<ErmisChatGenerics>> {
     const project_id = this.projectId;
 
-    const userResponse = await this.get<UserResponse<ErmisChatGenerics>>(this.baseURL + '/uss/v1/users/' + user_id, { project_id });
+    const userResponse = await this.get<UserResponse<ErmisChatGenerics>>(this.baseURL + '/uss/v1/users/' + user_id, {
+      project_id,
+    });
 
     this.state.updateUser(userResponse);
     return userResponse;
@@ -1645,8 +1646,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
     const userIDs = contactResponse.project_id_user_ids[project_id];
 
-    if (userIDs.length !== 0) {
-
+    if (userIDs !== undefined && userIDs.length !== 0) {
       const newStateUserIDs: string[] = [];
 
       userIDs.forEach((userID) => {
