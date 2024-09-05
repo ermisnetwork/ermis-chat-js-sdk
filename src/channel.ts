@@ -473,8 +473,12 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {Promise<UpdateChannelAPIResponse<ErmisChatGenerics>>} The server response
    */
   async acceptInvite(options: InviteOptions<ErmisChatGenerics> = {}) {
-    const url = this.getClient().baseURL + `/invites/${this.type}/${this.id}/accept`;
-    return this.getClient().post<APIResponse>(url);
+    // const url = this.getClient().baseURL + `/invites/${this.type}/${this.id}/accept`;
+    const channel_id = this.id;
+    const connection_id = this.getClient().wsConnection?.connectionID;
+
+    const url = this.getClient().baseURL + `/uss/v1/token_gate/join_channel/${this.type}`;
+    return this.getClient().post<APIResponse>(url, {}, { channel_id, connection_id });
   }
 
   /**
@@ -1066,7 +1070,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       const newStateUserIDs: string[] = [];
 
       state.members.forEach((member) => {
-        const userId = member.user?.id || "";
+        const userId = member.user?.id || '';
         const user = this.getClient().state.users[userId];
 
         if (!user) {
@@ -1086,7 +1090,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
       // Update member profiles with user information
       state.members.forEach((member) => {
-        const userId = member.user?.id || "";
+        const userId = member.user?.id || '';
         const user = this.getClient().state.users[userId] || newStateUsers[userId];
 
         if (user && member.user) {
