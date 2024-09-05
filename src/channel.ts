@@ -1244,7 +1244,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   async deleteMessage(messageId: string) {
-    return await this.getClient().delete(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageId}`);
+    return await this.getClient().delete<APIResponse & { message: MessageResponse<ErmisChatGenerics> }>(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageId}`);
   }
 
   async getThumbBlobVideo(file: File) {

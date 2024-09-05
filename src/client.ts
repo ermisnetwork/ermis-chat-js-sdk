@@ -167,10 +167,7 @@ import {
   UpdateMessageOptions,
   UpdateSegmentData,
   UserCustomEvent,
-  UserFilters,
-  UserOptions,
   UserResponse,
-  UserSort,
   GetThreadAPIResponse,
   PartialThreadUpdate,
   QueryThreadsOptions,
@@ -199,12 +196,8 @@ import {
   QueryReactionsAPIResponse,
   QueryReactionsOptions,
   ContactResponse,
-  Contact,
-  ServerType,
   UsersResponse,
   ChainsResponse,
-  ChainProjectResponse,
-  ChannelMemberResponse,
 } from './types';
 import { InsightMetrics } from './insights';
 import { Thread } from './thread';

@@ -3110,7 +3110,7 @@ export type CastVoteAPIResponse<ErmisChatGenerics extends ExtendableGenerics = D
  ** This types are used for the wallet feature
  */
 export type StartAuthResponse = {
-  challenge: object;
+  challenge: string;
 };
 export type GetTokenResponse = {
   token: string;
