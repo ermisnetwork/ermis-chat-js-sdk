@@ -251,8 +251,8 @@ export class ErmisAuth {
   }
 
   // api methods
-  async startAuth(): Promise<StartAuthResponse> {
-    const response: any = await this.post<StartAuthResponse>(this.baseURL + '/wallets/auth/start', {
+  async startAuth() {
+    const response: any = await this.post(this.baseURL + '/wallets/auth/start', {
       address: this.address,
     });
     const challenge = JSON.parse(response.challenge);

@@ -185,7 +185,7 @@ function App() {
 }
 ```
 
-### Step 5: Import the Chat SDk
+### Step 5: Initialize the Chat SDk
 
 On the client-side, initialize the Chat client with your **API key** and **ProjectID**:
 
