@@ -248,6 +248,8 @@ Get the users in your project to create a direct message.
 #### 1. Query users
 
 ```javascript
+const page = 1;
+const page_size = 10;
 await chatClient.queryUsers(page_size, page);
 ```
 
@@ -286,6 +288,9 @@ await chatClient.queryUsers(page_size, page);
 #### 2. Search users
 
 ```javascript
+const page = 1;
+const page_size = 10;
+const name = 'Tony';
 await chatClient.searchUsers(page, page_size, name);
 ```
 
@@ -325,14 +330,17 @@ await chatClient.searchUsers(page, page_size, name);
 #### 3. Get users by userIds
 
 ```javascript
-await chatClient.getBatchUsers(users, page, page_size);
+const page = 1;
+const page_size = 10;
+const list_user_id = ['user_id_1', 'user_id_2', 'user_id_3'];
+await chatClient.getBatchUsers(list_user_id, page, page_size);
 ```
 
-| Name      | Type   | Required | Description                           |
-| :-------- | :----- | :------- | :------------------------------------ |
-| page      | number | No       | The page number you want to query     |
-| page_size | number | No       | The number of users returned per page |
-| users     | array  | Yes      | List user id you want to query        |
+| Name         | Type   | Required | Description                           |
+| :----------- | :----- | :------- | :------------------------------------ |
+| page         | number | No       | The page number you want to query     |
+| page_size    | number | No       | The number of users returned per page |
+| list_user_id | array  | Yes      | List user id you want to query        |
 
 **Response**
 
@@ -364,6 +372,7 @@ await chatClient.getBatchUsers(users, page, page_size);
 #### 4. Get user by user id
 
 ```javascript
+const user_id = 'user_id_1';
 await chatClient.queryUser(user_id);
 ```
 
@@ -382,6 +391,8 @@ await chatClient.queryUser(user_id);
 #### 5. Update Personal Profile
 
 ```javascript
+const name = 'Tony';
+const about_me = 'My name is Tony';
 await chatClient.updateProfile(name, about_me);
 ```
 
@@ -459,7 +470,6 @@ await chatClient.queryChannels(filter, sort, options);
 ```
 
 **Filter:**
-
 Type: Object. The query filters to use. You can filter by any custom fields you've defined on the Channel.
 | Name | Type | Required | Description |
 | :-----------| :-- | :---------| :-----------|
@@ -470,7 +480,6 @@ Type: Object. The query filters to use. You can filter by any custom fields you'
 | offset | integer | No | The starting position for data retrieval. This parameter allows you to retrieve channels starting from a specific position, useful for paginating through results. For example, offset: 30 will start retrieving channels from position 31 in the list.
 
 **Sort:**
-
 Type: Object or array of objects. The sorting used for the channels that match the filters. Sorting is based on the field and direction, and multiple sorting options can be provided. You can sort based on fields such as `last_message_at`. Direction can be ascending (1) or descending (-1).
 
 ```javascript
@@ -478,7 +487,6 @@ const sort = [{ last_message_at: -1 }];
 ```
 
 **Options:**
-
 Type: Object. This method can be used to fetch information about existing channels, including message counts and other related details.
 | Name | Type | Required | Description |
 | :-----------| :--- | :---------| :-----------|
@@ -530,6 +538,8 @@ await channel.create();
 
 ```javascript
 // initialize the channel
+const channel_type = 'team'; // or 'messaging'
+const channel_id = 'b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd';
 const channel = chatClient.channel(channel_type, channel_id);
 
 // accept the invite
@@ -540,6 +550,8 @@ await channel.acceptInvite();
 
 ```javascript
 // initialize the channel
+const channel_type = 'team'; // or 'messaging'
+const channel_id = 'b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd';
 const channel = chatClient.channel(channel_type, channel_id);
 
 // accept the invite
@@ -551,29 +563,52 @@ await channel.rejectInvite();
 Queries the channel state and returns information about members, watchers and messages.
 
 ```javascript
+const channel_type = 'team'; // or 'messaging'
+const channel_id = 'b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd';
 const channel = chatClient.channel(channel_type, channel_id);
+
 await channel.query();
 ```
 
-You can use conditional parameters to filter messages based on their message IDs.
-| Name | Type | Required | Description |
-| :---------| :----| :---------| :-----------|
-| id_lt | string | No | Filters messages with message id less than the specified value.
-| id_gt | string | No | Filters messages with message id greater than the specified value.
-| id_around | string | No | Filters messages around a specific message id, potentially including messages before and after that message id.
+You can use message query functionality: These functions support features such as scrolling, searching, and jumping to specific messages by retrieving messages older than, newer than, or around a given `message_id`:
 
-**Example:**
+<!-- | Name      | Type   | Required | Description                                                                                                     |
+| :-------- | :----- | :------- | :-------------------------------------------------------------------------------------------------------------- |
+| id_lt     | string | No       | Filters messages with message id less than the specified value.                                                 |
+| id_gt     | string | No       | Filters messages with message id greater than the specified value.                                              |
+| id_around | string | No       | Filters messages around a specific message id, potentially including messages before and after that message id. | -->
+
+**4.1. Query Older Messages (`queryMessagesLessThanId`)**
+
+Retrieves a list of messages older than the message with `message_id`, limited by the `limit` parameter. Default limit is 25
 
 ```javascript
-const messages = {
-  limit: 25,
-  id_lt: message_id,
-};
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+const limit = 25;
 
-const channel = chatClient.channel(channel_type, channel_id);
-await channel.query({
-  messages, // optional
-});
+await channel.queryMessagesLessThanId(message_id, limit);
+```
+
+**4.2. Query Newer Messages (`queryMessagesGreaterThanId`)**
+
+Retrieves a list of messages newer than the message with `message_id`, limited by the `limit` parameter. Default limit is 25
+
+```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+const limit = 25;
+
+await channel.queryMessagesGreaterThanId(message_id, limit);
+```
+
+**4.3. Query Messages Around (`queryMessagesAroundId`)**
+
+Retrieves a list of messages around the message with `message_id`, limited by the `limit` parameter. Default limit is 25
+
+```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+const limit = 25;
+
+await channel.queryMessagesAroundId(message_id, limit);
 ```
 
 #### 5. Setting a channel
@@ -594,73 +629,77 @@ await channel.update(payload);
 | image       | string | No       | Avatar for the channel       |
 | description | string | No       | Description for the channel  |
 
-**5.2. Adding & Removing Channel Members**
+**5.2. Adding, Removing & Leaving Channel Members**
 The addMembers() method adds specified users as members, while removeMembers() removes them.
 
 **Adding members**
+List user id you want to adding
 
 ```javascript
-await channel.addMembers(userIds);
+const list_user_id = ['user_id_1', 'user_id_2', 'user_id_3'];
+await channel.addMembers(list_user_id);
 ```
 
 **Removing members**
+List user id you want to removing
 
 ```javascript
-await channel.removeMembers(userIds);
+const list_user_id = ['user_id_1', 'user_id_2', 'user_id_3'];
+await channel.removeMembers(list_user_id);
 ```
 
 **Leaving a channel**
+Allows the user to leave the channel, removing themselves from the conversation and any future notifications
 
 ```javascript
 await channel.removeMembers(['my_user_id']);
 ```
 
-| Name    | Type  | Required | Description                                 |
-| :------ | :---- | :------- | :------------------------------------------ |
-| userIds | array | Yes      | List user id you want to adding or removing |
-
 **5.3. Adding & Removing Moderators to a Channel**
 The addModerators() method adds a specified user as a Moderators (or updates their role to moderator if already members), while demoteModerators() removes the moderator status.
 
-**Adding a Moderator**
+**Adding Moderator**
+List user id you want to adding
 
 ```javascript
-await channel.addModerators(userIds);
+const list_user_id = ['user_id_1', 'user_id_2', 'user_id_3'];
+await channel.addModerators(list_user_id);
 ```
 
-**Removing a Moderator**
+**Removing Moderator**
+List user id you want to removing
 
 ```javascript
-await channel.demoteModerators(userIds);
+const list_user_id = ['user_id_1', 'user_id_2', 'user_id_3'];
+await channel.demoteModerators(list_user_id);
 ```
-
-| Name    | Type  | Required | Description                                 |
-| :------ | :---- | :------- | :------------------------------------------ |
-| userIds | array | Yes      | List user id you want to adding or removing |
 
 **5.4. Ban & Unban Channel Members**
 The ban and unban feature allows administrators to block or unblock members with the "member" role in a channel, managing their access rights.
 
 **Ban a Channel Member**
+List user id you want to ban
 
 ```javascript
-await channel.banMembers(userIds);
+const list_user_id = ['user_id_1', 'user_id_2', 'user_id_3'];
+await channel.banMembers(list_user_id);
 ```
 
 **Unban a Channel Member**
+List user id you want to unban
 
 ```javascript
-await channel.unbanMembers(userIds);
+const list_user_id = ['user_id_1', 'user_id_2', 'user_id_3'];
+await channel.unbanMembers(list_user_id);
 ```
 
-| Name    | Type  | Required | Description                           |
-| :------ | :---- | :------- | :------------------------------------ |
-| userIds | array | Yes      | List user id you want to ban or unban |
-
 **5.5. Channel Capabilities**
-This feature allows owner to configure permissions for members with the "member" role to send, edit, delete, and react to messages, ensuring chat content control.
+This feature allows `owner` role to configure permissions for members with the `member` role to send, edit, delete, and react to messages, ensuring chat content control.
 
 ```javascript
+const add_capabilities = ['send-message', 'update-own-message'];
+const remove_capabilities = ['delete-own-message', 'send-reaction'];
+
 await channel.updateCapabilities(add_capabilities, remove_capabilities);
 ```
 
@@ -669,13 +708,22 @@ await channel.updateCapabilities(add_capabilities, remove_capabilities);
 | add_capabilities    | array | Yes      | Capabilities you want to adding   |
 | remove_capabilities | array | Yes      | Capabilities you want to removing |
 
-**Capabilities:**
-| Name | What it indicates
-| :---| :---
-| send-message | Ability to send a message
-| update-own-message | Ability to update own messages in the channel
-| delete-own-message | Ability to delete own messages from the channel
-| send-reaction | Ability to send reactions
+**Get capabilities with the `member` role in channel**
+Retrieves the permissions for a member with the role of "member," helping to identify their rights and functions within the channel
+
+```javascript
+channel.getCapabilitiesMember();
+```
+
+**Name Capabilities**
+Includes permissions such as `send-message`, `update-own-message`, `delete-own-message`, `send-reaction`, allowing users to send messages, edit, delete their own messages, and send reactions.
+
+| Name               | What it indicates                               |
+| :----------------- | :---------------------------------------------- |
+| send-message       | Ability to send a message                       |
+| update-own-message | Ability to update own messages in the channel   |
+| delete-own-message | Ability to delete own messages from the channel |
+| send-reaction      | Ability to send reactions                       |
 
 **5.6. Query Attachments in a channel**
 This feature allows users to view all media files shared in a channel, including images, videos, and audio.
@@ -716,19 +764,13 @@ await channel.queryAttachmentMessages();
 
 This feature allows user to send a message to a specified channel or DM:
 
+**1.1 Send text message**
+
 ```javascript
 await channel.sendMessage({
   text: 'Hello',
-  attachments: [],
-  quoted_message_id: '',
 });
 ```
-
-| Name              | Type   | Required | Description                                               |
-| :---------------- | :----- | :------- | :-------------------------------------------------------- |
-| text              | string | Yes      | Text that you want to send to the selected channel.       |
-| attachments       | array  | No       | A list of attachments (audio, videos, images, and files). |
-| quoted_message_id | string | No       | The ID of the message that is being quoted.               |
 
 **Response**
 
@@ -740,7 +782,7 @@ await channel.sendMessage({
     "type": "regular",
     "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
     "user": {
-        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+      "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
     },
     "created_at": "2024-08-29T10:44:40.022289401+00:00"
   },
@@ -748,7 +790,61 @@ await channel.sendMessage({
 }
 ```
 
+**1.2 Send attachments message**
+Before sending messages with images, videos, or file attachments, users need to [upload the files](#2-upload-file) to the system for sending.
+
+```javascript
+await channel.sendMessage({
+  attachments: [
+    {
+      type: 'image',
+      image_url: 'https://bit.ly/2K74TaG',
+      title: 'photo.png',
+      file_size: 2020,
+      mime_type: 'image/png',
+    },
+  ],
+});
+```
+
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "398b7c12-e412-493c-9f37-0b1d2842d339",
+    "text": "",
+    "type": "regular",
+    "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+    "user": {
+        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "created_at": "2024-09-07T12:49:17.037397729+00:00",
+    "attachments": [
+      {
+        "title": "photo_webclip.png",
+        "file_size": 4584,
+        "type": "image",
+        "mime_type": "image/png",
+        "image_url": "https://bit.ly/2K74TaG"
+      }
+    ]
+  },
+  "duration": "3ms"
+}
+```
+
 **Attachments Format**
+`attachments` is an array containing objects that represent different types of attachments such as images, videos, or files. Each object has the following fields:
+
+- `type`: The type of file (image, video, file)
+- `image_url` or `asset_url`: URL of the file after uploading
+- `title`: The name of the file
+- `file_size`: The size of the file (in bytes)
+- `mime_type`: The MIME type of the file
+- `thumb_url`: Thumbnail URL (applies to videos)
+
+**Example**
 
 ```javascript
 const attachments = [
@@ -784,6 +880,45 @@ Extract a thumbnail from a video file, converting it to a Blob if the uploaded f
 await channel.getThumbBlobVideo(file);
 ```
 
+**1.3 Reply a message**
+The reply feature allows users to directly respond to a specific message, displaying the original message content alongside the reply.
+
+```javascript
+await channel.sendMessage({
+  text: 'Hello',
+  quoted_message_id: '99873843-757f-4b3a-95d0-0773314fb115',
+});
+```
+
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "cc7d8206-0f67-4b2b-8f8d-8a721ee0a4b1",
+    "text": "hehe",
+    "type": "reply",
+    "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+    "user": {
+      "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "created_at": "2024-09-07T12:47:58.398896591+00:00",
+    "quoted_message_id": "eacc4834-1b73-4eca-9108-409f1f9a91db",
+    "quoted_message": {
+      "id": "eacc4834-1b73-4eca-9108-409f1f9a91db",
+      "text": "hello",
+      "type": "regular",
+      "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+      "user": {
+        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+      },
+      "created_at": "2024-09-06T10:27:50.361815802+00:00"
+    }
+  },
+  "duration": "0ms"
+}
+```
+
 #### 2. Upload file
 
 This feature allows user to upload a file to the system. Maximum file size is 2GB
@@ -803,9 +938,12 @@ await channel.sendFile(file);
 
 #### 3. Edit message
 
-This feature allows user to edit the content of an existing message:
+The edit message feature enables users to modify and update the content of a previously sent message in a chat
 
 ```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+const text = 'Hello';
+
 await channel.editMessage(message_id, text);
 ```
 
@@ -829,9 +967,10 @@ await channel.editMessage(message_id, text);
 
 #### 4. Delete message
 
-This feature allows user to delete an existing message:
+The delete message feature allows users to remove a previously sent message from the chat for all participants
 
 ```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
 await channel.deleteMessage(message_id);
 ```
 
@@ -855,16 +994,19 @@ await channel.deleteMessage(message_id);
 
 #### 5. Search message
 
-This feature allows user to search for a specific message in a channel of DM:
+The message search feature returns up to 25 messages per query, helping users efficiently find specific messages in the chat
 
 ```javascript
+const search_term = 'Hello';
+const offset = 0;
+
 await channel.searchMessage(search_term, offset);
 ```
 
 | Name        | Type   | Required | Description                                               |
 | :---------- | :----- | :------- | :-------------------------------------------------------- |
 | search_term | string | Yes      | Keyword used to filter the messages.                      |
-| offset      | string | Yes      | Starting position for retrieving search data in the list. |
+| offset      | number | Yes      | Starting position for retrieving search data in the list. |
 
 **Response**
 
@@ -901,63 +1043,33 @@ await channel.searchMessage(search_term, offset);
 
 #### 6. Unread messages
 
-The Unread Message Count indicates how many messages were received wwhile a user was offline. After reconnecting or logging in, user can view the total number of missed messages in a channel or DM.
+Retrieves messages that have not been read by the user, helping to keep track of new or pending messages
 
-**6.1 Get unread messages count (all channels)**
-`getUnreadCount()` returns information on all unread messages across all joined channels. You can display this number in the UI within the channel list of your chat app.
-
-```javascript
-await chatClient.getUnreadCount(userId);
-```
-
-**Response**
+**6.1 Unread messages in a channel**
+By using `countUnread()`, you can retrieve the total number of unread messages of a user in a group channel.
 
 ```javascript
-{
-  "total_unread_count": 0,
-  "total_unread_threads_count": 0,
-  "channels": [
-    {
-      "channel_id": "b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
-      "unread_count": 0,
-      "last_read_message_id": "b9339abe-eb4f-43a7-954b-9397bf1a77ca"
-    },
-    {
-      "channel_id": "b44937e4-c0d4-4a73-847c-3730a923ce83:ac7018e7-d398-4053-80f0-116aefc80682",
-      "unread_count": 0
-    }
-  ],
-  "channel_type": [
-    {
-      "channel_type": "messaging",
-      "channel_count": 1,
-      "unread_count": 0
-    },
-    {
-      "channel_type": "team",
-      "channel_count": 1,
-      "unread_count": 0
-    }
-  ],
-  "threads": [],
-  "duration": "0ms"
-}
+channel.countUnread();
 ```
 
-**6.2 Marking a channel as read**
+**6.2 Get member unread messages**
+`getUnreadMemberCount()` Determines the number of members in the channel who have not read the messages. This function helps manage and track the read status of messages among channel members.
+
+```javascript
+channel.getUnreadMemberCount();
+```
+
+**6.3 Marking a channel as read**
 You can mark all messages in a channel as read on the client-side:
 
 ```javascript
 await channel.markRead();
 ```
 
-**6.3 Jump to last read message**
+**6.4 Jump to last read message**
 This is how you can jump to the last read message in a specific channel:
 
 ```javascript
-const channel = chatClient.channel(channel_type, channel_id);
-await channel.query();
-
 const lastReadMessageId = channel.state.read['<user id>'];
 await channel.state.loadMessageIntoState(lastReadMessageId);
 
@@ -968,11 +1080,48 @@ console.log(channel.state.messages);
 
 The Reaction feature allows users to send, manage reactions on messages, and delete reactions when necessary.
 
-**Send a reaction:**
+The message reaction feature allows users to quickly respond with five types of reactions: 'haha', 'like', 'love', 'sad', and 'fire'.
+
+**Example**
 
 ```javascript
+const EMOJI_QUICK = [
+  {
+    type: 'haha',
+    value: '😂',
+  },
+  {
+    type: 'like',
+    value: '👍',
+  },
+  {
+    type: 'love',
+    value: '❤️',
+  },
+  {
+    type: 'sad',
+    value: '😔',
+  },
+  {
+    type: 'fire',
+    value: '🔥',
+  },
+];
+```
+
+**7.1. Send a reaction:**
+
+```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+const reaction_type = 'love';
+
 await channel.sendReaction(message_id, reaction_type);
 ```
+
+| Name          | Type   | Required | Description                                                                    |
+| :------------ | :----- | :------- | :----------------------------------------------------------------------------- |
+| message_id    | string | Yes      | ID of the message to react to                                                  |
+| reaction_type | string | Yes      | Type of the reaction. User could have only 1 reaction of each type per message |
 
 **Response**
 
@@ -1017,9 +1166,12 @@ await channel.sendReaction(message_id, reaction_type);
 }
 ```
 
-**Delete a reaction:**
+**7.2. Delete a reaction:**
 
 ```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+const reaction_type = 'love';
+
 await channel.deleteReaction(message_id, reaction_type);
 ```
 

@@ -986,6 +986,18 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     return count;
   }
 
+  getUnreadMemberCount() {
+    if (!this.state.read) return [];
+
+    return Object.values(this.state.read);
+  }
+
+  getCapabilitiesMember() {
+    if (!this.data) return [];
+
+    return this.data.member_capabilities;
+  }
+
   /**
    * countUnreadMentions - Count the number of unread messages mentioning the current user
    *
@@ -1147,6 +1159,54 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     return state;
   }
 
+  async queryMessagesLessThanId(message_id: string, limit: number = 25) {
+    await this.getClient().wsPromise;
+
+    let project_id = this._client.projectId;
+    let queryURL = `${this.getClient().baseURL}/channels/${this.type}/${this.id}`;
+
+    const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', {
+      data: this._data,
+      state: true,
+      project_id,
+      messages: { limit, id_lt: message_id },
+    });
+
+    return state.messages;
+  }
+
+  async queryMessagesGreaterThanId(message_id: string, limit: number = 25) {
+    await this.getClient().wsPromise;
+
+    let project_id = this._client.projectId;
+    let queryURL = `${this.getClient().baseURL}/channels/${this.type}/${this.id}`;
+
+    const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', {
+      data: this._data,
+      state: true,
+      project_id,
+      messages: { limit, id_gt: message_id },
+    });
+
+    return state.messages;
+  }
+
+  async queryMessagesAroundId(message_id: string, limit: number = 25) {
+    await this.getClient().wsPromise;
+
+    let project_id = this._client.projectId;
+    let queryURL = `${this.getClient().baseURL}/channels/${this.type}/${this.id}`;
+
+    const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', {
+      data: this._data,
+      state: true,
+      project_id,
+      messages: { limit, id_gt: message_id },
+    });
+
+    return state.messages;
+  }
+
   /**
    * banUser - Bans a user from a channel
    *
@@ -1248,7 +1308,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   async deleteMessage(messageId: string) {
-    return await this.getClient().delete<APIResponse & { message: MessageResponse<ErmisChatGenerics> }>(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageId}`);
+    return await this.getClient().delete<APIResponse & { message: MessageResponse<ErmisChatGenerics> }>(
+      this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageId}`,
+    );
   }
 
   async getThumbBlobVideo(file: File) {
