@@ -475,7 +475,7 @@ Type: Object. The query filters to use. You can filter by any custom fields you'
 | :-----------| :-- | :---------| :-----------|
 | type | array | No | The type of channel: messaging, team. If the array is empty, it will return all channels.
 | roles | array | No | This method is used to retrieve a list of channels that the current user is a part of. The API supports filtering channels based on the user's role within each channel, including roles such as `owner`, `moder`, `member`, and `pending`.<br /><br />`owner` - Retrieves a list of channels where the user's role is the owner. <br />`moder` - Retrieves a list of channels where the user's role is the moderator. <br />`member` - Retrieves a list of channels where the user's role is a member. <br /> `pending` - Retrieves a list of channels where the user's role is pending approval.
-| other_roles | array | No | This API allows you to retrieve a list of channels that you have created, with the ability to filter channels based on the roles of other users within the channel. The roles available for filtering include: `owner`, `moder`, `member`, and `pending`.<br /><br /> `owner` - Filter channels where the user is the channel owner.</br> `moder` - Filter channels where the user is a moderator.</br> `member` - Filter channels where the user is a member. </br> `pending` - Filter channels where the user is pending approval.
+| other_roles | array | No | This API allows you to retrieve a list of channels that you have created, with the ability to filter channels based on the roles of other users within the channel. The roles available for filtering include: `owner`, `moder`, `member`, and `pending`.<br /><br /> `owner` - Filter channels where the user is the channel owner.<br /> `moder` - Filter channels where the user is a moderator.<br /> `member` - Filter channels where the user is a member. <br /> `pending` - Filter channels where the user is pending approval.
 | limit | integer | No | The maximum number of channels to retrieve in a single request.
 | offset | integer | No | The starting position for data retrieval. This parameter allows you to retrieve channels starting from a specific position, useful for paginating through results. For example, offset: 30 will start retrieving channels from position 31 in the list.
 
@@ -571,12 +571,6 @@ await channel.query();
 ```
 
 You can use message query functionality: These functions support features such as scrolling, searching, and jumping to specific messages by retrieving messages older than, newer than, or around a given `message_id`:
-
-<!-- | Name      | Type   | Required | Description                                                                                                     |
-| :-------- | :----- | :------- | :-------------------------------------------------------------------------------------------------------------- |
-| id_lt     | string | No       | Filters messages with message id less than the specified value.                                                 |
-| id_gt     | string | No       | Filters messages with message id greater than the specified value.                                              |
-| id_around | string | No       | Filters messages around a specific message id, potentially including messages before and after that message id. | -->
 
 **4.1. Query Older Messages (`queryMessagesLessThanId`)**
 
