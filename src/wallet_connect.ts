@@ -279,7 +279,7 @@ export class ErmisAuth {
 
   _disconnect() {
     this.logger('info', 'ErmisAuth - Disconnected', {
-      tags: ['wallet_connect'],
+      tags: ['ErmisAuth'],
     });
     this.disconnected = true;
   }
