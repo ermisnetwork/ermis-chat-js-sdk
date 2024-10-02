@@ -403,7 +403,7 @@ await chatClient.updateProfile(name, about_me);
 
 #### 6. Get contact
 
-Get all your contacts in a project:
+The function returns the list of `contact_user_ids` (direct channels) and `block_user_ids` (blocked users) in the chat SDK
 
 ```javascript
 await chatClient.queryContacts();
@@ -413,12 +413,12 @@ await chatClient.queryContacts();
 
 ```javascript
 {
-  "project_id_user_ids": {
-    "b44937e4-c0d4-4a73-847c-3730a923ce83": [
-      "0x8ba208a3bfb80edd7fc5febf5666e146a3c8722d"
-    ]
-  },
-  "duration": "1ms"
+  "contact_user_ids": [
+    "0xa1ccc3bb50ad976d5cd6c772c4ccc5cd5e18de3a"
+  ],
+  "block_user_ids": [
+    "0x8ba208a3bfb80edd7fc5febf5666e146a3c8722d"
+  ]
 }
 ```
 
@@ -748,6 +748,25 @@ await channel.queryAttachmentMessages();
   ],
   "duration": "1ms"
 }
+```
+
+**5.7. Block & Unblock a Direct channel**
+Allows users to block any user in their DM list. Users can unblock at any time while retaining the previous conversation history.
+
+> **Note**: Only allows block/unblock for direct channels with type `messaging`, not applicable for group channels with type `team`
+
+**Block a Direct channel**
+The block direct channel feature prevents users from sending messages, triggering the `member.blocked` event via WebSocket
+
+```javascript
+await channel.blockUser();
+```
+
+**Unblock a Direct channel**
+The unblock direct channel feature allows users to resume messaging, triggering the `member.unblocked` event via WebSocket.
+
+```javascript
+await channel.unblockUser();
 ```
 
 <br />
@@ -1247,6 +1266,8 @@ A full list of events is shown below. The next section of the documentation expl
 | `member.demoted` | when a member is removed moderator to a channel | clients watching the channel
 | `member.banned` | when a member is ban to a channel | clients watching the channel
 | `member.unbanned` | when a member is unban to a channel | clients watching the channel
+| `member.blocked` | when a direct channel is blocked | clients watching the channel
+| `member.unblocked` | when a direct channel is unblocked | clients watching the channel
 | `notification.added_to_channel` | when the user is added to the list of channel members | clients from the user added that are not watching the channel
 | `notification.invite_accepted` | when the user accepts an invite | clients from the user invited that are not watching the channel
 | `notification.invite_rejected` | when the user rejects an invite | clients from the user invited that are not watching the channel

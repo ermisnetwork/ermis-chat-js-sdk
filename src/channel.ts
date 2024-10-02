@@ -455,14 +455,19 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
   /**
    * truncate - Removes all messages from the channel
-   * @param {TruncateOptions<ErmisChatGenerics>} [options] Defines truncation options
-   * @return {Promise<TruncateChannelAPIResponse<ErmisChatGenerics>>} The server response
    */
-  async truncate(options: TruncateOptions<ErmisChatGenerics> = {}) {
-    return await this.getClient().post<TruncateChannelAPIResponse<ErmisChatGenerics>>(
+  async truncate() {
+    return await this.getClient().delete<TruncateChannelAPIResponse<ErmisChatGenerics>>(
       this._channelURL() + '/truncate',
-      options,
     );
+  }
+
+  async blockUser() {
+    return await this.getClient().post(this._channelURL(), { action: 'block' });
+  }
+
+  async unblockUser() {
+    return await this.getClient().post(this._channelURL(), { action: 'unblock' });
   }
 
   /**

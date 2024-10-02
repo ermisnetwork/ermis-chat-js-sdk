@@ -198,6 +198,7 @@ import {
   ContactResponse,
   UsersResponse,
   ChainsResponse,
+  ContactResult,
 } from './types';
 import { InsightMetrics } from './insights';
 import { Thread } from './thread';
@@ -1641,10 +1642,17 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     return usersResponse;
   }
-  async queryContacts(): Promise<ContactResponse> {
+  async queryContacts(): Promise<ContactResult> {
     let project_id = this.projectId;
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
-    const userIDs = contactResponse.project_id_user_ids[project_id];
+    const dataUsers = contactResponse.project_id_user_ids[project_id];
+    const userIDs = dataUsers
+      .filter((user: any) => user.relation_status !== 'blocked')
+      .map((user: any) => user.other_id) || [];
+    
+    const block_user_ids = dataUsers
+      .filter((user: any) => user.relation_status === 'blocked')
+      .map((user: any) => user.other_id) || [];
 
     if (userIDs !== undefined && userIDs.length !== 0) {
       const newStateUserIDs: string[] = [];
@@ -1663,7 +1671,10 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         });
       }
     }
-    return contactResponse;
+    return {
+      contact_user_ids: userIDs,
+      block_user_ids,
+    };
   }
   async getChains(): Promise<ChainsResponse> {
     let chain_response = await this.get<ChainsResponse>(this.baseURL + '/uss/v1/users/chains');
