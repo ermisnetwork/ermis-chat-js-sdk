@@ -1312,21 +1312,21 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     if (event.type === 'health.check' && event.me) {
       client.user = event.me;
       client.state.updateUser(event.me);
-      client.mutedChannels = event.me.channel_mutes;
-      client.mutedUsers = event.me.mutes;
+      // client.mutedChannels = event.me.channel_mutes;
+      // client.mutedUsers = event.me.mutes;
     }
 
     if (event.channel && event.type === 'notification.message_new') {
       this._addChannelConfig(event.channel);
     }
 
-    if (event.type === 'notification.channel_mutes_updated' && event.me?.channel_mutes) {
-      this.mutedChannels = event.me.channel_mutes;
-    }
+    // if (event.type === 'notification.channel_mutes_updated' && event.me?.channel_mutes) {
+    //   this.mutedChannels = event.me.channel_mutes;
+    // }
 
-    if (event.type === 'notification.mutes_updated' && event.me?.mutes) {
-      this.mutedUsers = event.me.mutes;
-    }
+    // if (event.type === 'notification.mutes_updated' && event.me?.mutes) {
+    //   this.mutedUsers = event.me.mutes;
+    // }
 
     if (event.type === 'notification.mark_read' && event.unread_channels === 0) {
       const activeChannelKeys = Object.keys(this.activeChannels);
@@ -1565,7 +1565,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
   }
 
   /**
@@ -1646,13 +1646,16 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     let project_id = this.projectId;
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
     const dataUsers = contactResponse.project_id_user_ids[project_id];
-    const userIDs = dataUsers
-      .filter((user: any) => user.relation_status !== 'blocked')
-      .map((user: any) => user.other_id) || [];
-    
-    const block_user_ids = dataUsers
-      .filter((user: any) => user.relation_status === 'blocked')
-      .map((user: any) => user.other_id) || [];
+    const userIDs: string[] = [];
+    const block_user_ids: string[] = [];
+
+    dataUsers.forEach((user: any) => {
+      if (user.relation_status !== 'blocked') {
+        userIDs.push(user.other_id);
+      } else if (user.relation_status === 'blocked') {
+        block_user_ids.push(user.other_id);
+      }
+    });
 
     if (userIDs !== undefined && userIDs.length !== 0) {
       const newStateUserIDs: string[] = [];
@@ -1676,6 +1679,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       block_user_ids,
     };
   }
+
   async getChains(): Promise<ChainsResponse> {
     let chain_response = await this.get<ChainsResponse>(this.baseURL + '/uss/v1/users/chains');
     this.chains = chain_response;
@@ -2178,6 +2182,28 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       return channel;
     }
     const channel = new Channel<ErmisChatGenerics>(this, channelType, channelID, custom);
+    this.activeChannels[channel.cid] = channel;
+
+    return channel;
+  };
+  /**
+   *  getChannel - Returns a new channel with the given type, id and custom data
+   * team channel id will be automatically generated from sdk.
+   * */
+  getChannel = (channelType: string, custom: ChannelData<ErmisChatGenerics>) => {
+    const uuid = randomId();
+    const id = `${this.projectId}:${uuid}`;
+    // only allow 1 channel object per cid
+    const cid = `${channelType}:${id}`;
+    if (cid in this.activeChannels && !this.activeChannels[cid].disconnected) {
+      const channel = this.activeChannels[cid];
+      if (Object.keys(custom).length > 0) {
+        channel.data = custom;
+        channel._data = custom;
+      }
+      return channel;
+    }
+    const channel = new Channel<ErmisChatGenerics>(this, channelType, id, custom);
     this.activeChannels[channel.cid] = channel;
 
     return channel;

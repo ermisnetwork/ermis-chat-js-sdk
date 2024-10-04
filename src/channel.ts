@@ -56,6 +56,8 @@ import {
   PollVoteData,
   SendMessageOptions,
   AscDesc,
+  Attachment,
+  AttachmentResponse,
 } from './types';
 import { Role } from './permissions';
 
@@ -172,10 +174,13 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {Promise<SendMessageAPIResponse<ErmisChatGenerics>>} The Server Response
    */
   async sendMessage(message: Message<ErmisChatGenerics>, options?: SendMessageOptions) {
-    const id = randomId();
+    if (message.id === undefined) {
+      const id = randomId();
+      message = { ...message, id }
+    }
 
     return await this.getClient().post<SendMessageAPIResponse<ErmisChatGenerics>>(this._channelURL() + '/message', {
-      message: { ...message, id },
+      message: { ...message },
       ...options,
     });
   }
@@ -543,7 +548,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   async queryAttachmentMessages() {
-    return await this.getClient().post(this.getClient().baseURL + `/channels/${this.type}/${this.id}/attachment`);
+    return await this.getClient().post<AttachmentResponse<ErmisChatGenerics>>(this.getClient().baseURL + `/channels/${this.type}/${this.id}/attachment`);
   }
 
   async searchMessage(search_term: string, offset: number) {

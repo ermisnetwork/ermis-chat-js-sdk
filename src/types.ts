@@ -623,7 +623,7 @@ export type MuteChannelAPIResponse<ErmisChatGenerics extends ExtendableGenerics 
   channel_mute: ChannelMute<ErmisChatGenerics>;
   own_user: OwnUserResponse<ErmisChatGenerics>;
   channel_mutes?: ChannelMute<ErmisChatGenerics>[];
-  mute?: MuteResponse<ErmisChatGenerics>;
+  // mute?: MuteResponse<ErmisChatGenerics>;
 };
 
 export type MessageResponse<
@@ -703,7 +703,7 @@ export type MuteUserResponse<ErmisChatGenerics extends ExtendableGenerics = Defa
 export type OwnUserBase<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   channel_mutes: ChannelMute<ErmisChatGenerics>[];
   devices: Device<ErmisChatGenerics>[];
-  mutes: Mute<ErmisChatGenerics>[];
+  // mutes: Mute<ErmisChatGenerics>[];
   total_unread_count: number;
   unread_channels: number;
   unread_count: number;
@@ -1959,6 +1959,21 @@ export type AppSettings = {
 export type Attachment<
   ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
 > = ErmisChatGenerics['attachmentType'] & {
+  // main fields for ermis.
+  id?: string;
+  thumb_url?: string;
+  content_disposition?: string;
+  content_length?: number;
+  content_type?: string;
+  updated_at?: string;
+  created_at?: string;
+  message_id?: string;
+  file_name?: string;
+  url?: string;
+  cid?: string;
+  user_id?: string;
+
+  // old fields.
   actions?: Action[];
   asset_url?: string;
   author_icon?: string;
@@ -1979,11 +1994,11 @@ export type Attachment<
   original_width?: number;
   pretext?: string;
   text?: string;
-  thumb_url?: string;
   title?: string;
   title_link?: string;
   type?: string;
   waveform_data?: Array<number>;
+
 };
 
 export type OGAttachment = {
@@ -3155,4 +3170,8 @@ export type ChainsResponse<ErmisChatGenerics extends ExtendableGenerics = Defaul
   chains: number[];
   joined: ChainProjectResponse<ErmisChatGenerics>[];
   not_joined: ChainProjectResponse<ErmisChatGenerics>[];
+};
+
+export type AttachmentResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
+  attachments: Attachment<ErmisChatGenerics>[];
 };
