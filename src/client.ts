@@ -1786,24 +1786,16 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     options: ChannelOptions = {},
     stateOptions: ChannelStateOptions = {},
   ) {
-    const defaultOptions: ChannelOptions = {
-      state: true,
-      watch: true,
-      presence: false,
-    };
 
     // Make sure we wait for the connect promise if there is a pending one
     await this.wsPromise;
-    if (!this._hasConnectionID()) {
-      defaultOptions.watch = false;
-    }
+
     let project_id = this.projectId;
 
     // Return a list of channels
     const payload = {
       filter_conditions: { ...filterConditions, project_id },
       sort: normalizeQuerySort(sort),
-      ...defaultOptions,
       ...options,
     };
 
@@ -1817,7 +1809,38 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       },
     });
 
-    return this.hydrateActiveChannels(data.channels, stateOptions);
+    return this.hydrateChannels(data.channels, stateOptions);
+  }
+
+  /**
+  * @param {ChannelFilters<ErmisChatGenerics>} filterConditions for invited channels: just set roles to ['pending'], The "type" field still has the same options as before.
+  * type: ["general", "team", "messaging"],
+  * roles: ["owner", "moder", "member","pending"],
+  * 
+  **/
+  async queryInvitedChannels(
+    filterConditions: ChannelFilters<ErmisChatGenerics>,
+    sort: ChannelSort<ErmisChatGenerics> = [],
+    options: ChannelOptions = {},
+    stateOptions: ChannelStateOptions = {},) {
+
+    // Ensure the roles field is always set to pending.
+    const invitedFilter = { ...filterConditions, roles: ['pending'] };
+
+    // Make sure we wait for the connect promise if there is a pending one
+    await this.wsPromise;
+
+    let project_id = this.projectId;
+
+    // Return a list of channels
+    const payload = {
+      filter_conditions: { ...invitedFilter, project_id },
+      sort: normalizeQuerySort(sort),
+      ...options,
+    };
+
+    const data = await this.post<QueryChannelsAPIResponse<ErmisChatGenerics>>(this.baseURL + '/channels', payload);
+    return this.hydrateChannels(data.channels, stateOptions);
   }
 
   async startCall(payload: any) {
@@ -1855,15 +1878,16 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
   }
 
-  hydrateActiveChannels(
+  hydrateChannels(
     channelsFromApi: ChannelAPIResponse<ErmisChatGenerics>[] = [],
     stateOptions: ChannelStateOptions = {},
   ) {
     const { skipInitialization, offlineMode = false } = stateOptions;
 
-    for (const channelState of channelsFromApi) {
-      this._addChannelConfig(channelState.channel);
-    }
+    // NOTE: we don't send config with channel data anymore
+    // for (const channelState of channelsFromApi) {
+    //   this._addChannelConfig(channelState.channel);
+    // }
 
     const channels: Channel<ErmisChatGenerics>[] = [];
 

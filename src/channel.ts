@@ -1776,15 +1776,16 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     if (state.watcher_count !== undefined) {
       this.state.watcher_count = state.watcher_count;
     }
-    // convert the arrays into objects for easier syncing...
-    if (state.watchers) {
-      for (const watcher of state.watchers) {
-        if (watcher) {
-          clientState.updateUserReference(watcher, this.cid);
-          this.state.watchers[watcher.id] = watcher;
-        }
-      }
-    }
+    // NOTE: we don't send the watchers with the channel data anymore 
+    // // convert the arrays into objects for easier syncing...
+    // if (state.watchers) {
+    //   for (const watcher of state.watchers) {
+    //     if (watcher) {
+    //       clientState.updateUserReference(watcher, this.cid);
+    //       this.state.watchers[watcher.id] = watcher;
+    //     }
+    //   }
+    // }
 
     // initialize read state to last message or current time if the channel is empty
     // if the user is a member, this value will be overwritten later on otherwise this ensures
