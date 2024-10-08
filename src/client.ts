@@ -214,9 +214,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   activeChannels: {
     [key: string]: Channel<ErmisChatGenerics>;
   };
-  invitedChannels: {
-    [key: string]: Channel<ErmisChatGenerics>;
-  };
   anonymous: boolean;
   persistUserOnConnectionFailure?: boolean;
   axiosInstance: AxiosInstance;
@@ -340,8 +337,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     this.setUserPromise = null;
     // keeps a reference to all the channels that are in use
     this.activeChannels = {};
-    //
-    this.invitedChannels = {};
 
     // mapping between channel groups and configs
     this.configs = {};
@@ -1840,6 +1835,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     };
 
     const data = await this.post<QueryChannelsAPIResponse<ErmisChatGenerics>>(this.baseURL + '/channels', payload);
+
     return this.hydrateChannels(data.channels, stateOptions);
   }
 
