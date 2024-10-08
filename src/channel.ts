@@ -182,7 +182,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
   async editMessage(messageID: string, text: string) {
     return await this.getClient().post(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageID}`, {
-      text,
+      message: {
+        // mentioned_all: true,
+        // mentioned_users:  ["0x75c4ff25f1d81803675f687d52a4906855d61ad8"],
+        text,
+      },
     });
   }
 
@@ -1115,7 +1119,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       this.id = state.channel.id;
       this.cid = state.channel.cid;
 
-
       // set the channel as active...
       const membersStr = state.members
         .map((member) => member.user_id || member.user?.id)
@@ -1491,8 +1494,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       case 'message.deleted':
         if (event.message) {
           this._extendEventWithOwnReactions(event);
-          if (event.hard_delete) channelState.removeMessage(event.message);
-          else channelState.addMessageSorted(event.message, false, false);
+          //! NOTE: check lai o day
+          channelState.removeMessage(event.message);
+          channelState.addMessageSorted(event.message, false, false);
+          // if (event.hard_delete) channelState.removeMessage(event.message);
+          // else channelState.addMessageSorted(event.message, false, false);
 
           channelState.removeQuotedMessageReferences(event.message);
 
