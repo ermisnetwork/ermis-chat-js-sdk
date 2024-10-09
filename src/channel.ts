@@ -1081,38 +1081,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       state: true,
       ...update_options,
     });
-    // update member profiles with user information
-    const newStateUserIDs: string[] = [];
-
-    state.members.forEach((member) => {
-      const userId = member.user?.id || member.user_id || '';
-      const user = this.getClient().state.users[userId];
-
-      if (!user) {
-        newStateUserIDs.push(userId);
-      }
-    });
-
-    let newStateUsers: { [key: string]: any } = {};
-    if (newStateUserIDs.length > 0) {
-      // Fetch user information if not found
-      const fetchedUsers = await this.getClient().getBatchUsers(newStateUserIDs);
-      fetchedUsers.data.forEach((user) => {
-        this.getClient().state.updateUser(user);
-        newStateUsers[user.id] = user;
-      });
-    }
-
-    // Update member profiles with user information
-    state.members.forEach((member) => {
-      const userId = member.user?.id || '';
-      const user = this.getClient().state.users[userId] || newStateUsers[userId];
-
-      if (user && member.user) {
-        const updatedUser = { ...member.user, ...user };
-        member.user = updatedUser;
-      }
-    });
 
     // update the channel id if it was missing
 
@@ -1746,6 +1714,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   _initializeState(
     state: ChannelAPIResponse<ErmisChatGenerics>,
     messageSetToAddToIfDoesNotExist: MessageSetType = 'latest',
+    updateUserIds?: (id: string) => void
   ) {
     const { state: clientState, user, userID } = this.getClient();
 
@@ -1753,6 +1722,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     if (state.members) {
       for (const member of state.members) {
         if (member.user) {
+          if (updateUserIds) {
+            updateUserIds(member.user.id)
+          };
           clientState.updateUserReference(member.user, this.cid);
         }
       }

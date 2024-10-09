@@ -1652,23 +1652,23 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       }
     });
 
-    if (userIDs !== undefined && userIDs.length !== 0) {
-      const newStateUserIDs: string[] = [];
+    // if (userIDs !== undefined && userIDs.length !== 0) {
+    //   const newStateUserIDs: string[] = [];
 
-      userIDs.forEach((userID) => {
-        const user = this.state.users[userID];
-        if (!user) {
-          newStateUserIDs.push(userID);
-        }
-      });
+    //   userIDs.forEach((userID) => {
+    //     const user = this.state.users[userID];
+    //     if (!user) {
+    //       newStateUserIDs.push(userID);
+    //     }
+    //   });
 
-      if (newStateUserIDs.length > 0) {
-        const fetchedUsers = await this.getBatchUsers(newStateUserIDs);
-        fetchedUsers.data.forEach((user) => {
-          this.state.updateUser(user);
-        });
-      }
-    }
+    //   if (newStateUserIDs.length > 0) {
+    //     const fetchedUsers = await this.getBatchUsers(newStateUserIDs);
+    //     fetchedUsers.data.forEach((user) => {
+    //       this.state.updateUser(user);
+    //     });
+    //   }
+    // }
     return {
       contact_user_ids: userIDs,
       block_user_ids,
@@ -1874,7 +1874,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
   }
 
-  hydrateChannels(
+
+  async hydrateChannels(
     channelsFromApi: ChannelAPIResponse<ErmisChatGenerics>[] = [],
     stateOptions: ChannelStateOptions = {},
   ) {
@@ -1886,7 +1887,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     // }
 
     const channels: Channel<ErmisChatGenerics>[] = [];
-
+    const userIds: string[] = [];
     for (const channelState of channelsFromApi) {
       const c = this.channel(channelState.channel.type, channelState.channel.id);
       c.data = channelState.channel;
@@ -1894,13 +1895,30 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       c.initialized = !offlineMode;
 
       if (skipInitialization === undefined) {
-        c._initializeState(channelState, 'latest');
+        c._initializeState(channelState, 'latest', (id) => {
+          if (!userIds.includes(id)) {
+            userIds.push(id);
+          }
+        });
       } else if (!skipInitialization.includes(channelState.channel.id)) {
         c.state.clearMessages();
-        c._initializeState(channelState, 'latest');
+        c._initializeState(channelState, 'latest', (id) => {
+          if (!userIds.includes(id)) {
+            userIds.push(id);
+          }
+        });
       }
 
       channels.push(c);
+    }
+
+    // ensure we have the users for all the channels we just added
+    if (userIds.length > 0) {
+      const newUserIds = userIds.filter((userId) => {
+        const user = this.state.users[userId];
+        return !user;
+      })
+      await this.getBatchUsers(newUserIds);
     }
 
     return channels;
@@ -2092,7 +2110,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     // support channel("messaging", {options})
     if (channelIDOrCustom && typeof channelIDOrCustom === 'object') {
-      return this.getChannelByMembers(channelType, channelIDOrCustom);
+      return this.getChannel(channelType, channelIDOrCustom);
     }
 
     // // support channel("messaging", undefined, {options})
