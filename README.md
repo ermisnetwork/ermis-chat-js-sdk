@@ -20,7 +20,7 @@ The ErmisChat SDK for JavaScript allows you to integrate real-time chat into you
 
 This section shows you the prerequisites needed to use the ErmisChat SDK for JavaScript. If you have any comments or questions regarding bugs and feature requests, please reach out to us.
 
-### Supported browsers
+## Supported browsers
 
 |      Browser      | Supported versions     |
 | :---------------: | :--------------------- |
@@ -82,7 +82,7 @@ const options = {
 const authInstance = ErmisAuth.getInstance(API_KEY, address, options);
 ```
 
-#### 4.1: Create challenge
+#### 4.1 Create challenge
 
 Create challenge message before signing with the wallet:
 
@@ -133,7 +133,7 @@ const challenge = await authInstance.startAuth();
 }
 ```
 
-#### 4.2: Sign wallet and Get Token
+#### 4.2 Sign wallet and Get Token
 
 After receiving the challenge message, sign the wallet to get the signature using [useSignTypedData](https://wagmi.sh/react/api/hooks/useSignTypedData), then retrieve the token:
 
