@@ -1646,13 +1646,11 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     let project_id = this.projectId;
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
     const dataUsers = contactResponse.project_id_user_ids[project_id];
-    const userIDs = dataUsers
-      .filter((user: any) => user.relation_status !== 'blocked')
-      .map((user: any) => user.other_id) || [];
-    
-    const block_user_ids = dataUsers
-      .filter((user: any) => user.relation_status === 'blocked')
-      .map((user: any) => user.other_id) || [];
+    const userIDs =
+      dataUsers.filter((user: any) => user.relation_status !== 'blocked').map((user: any) => user.other_id) || [];
+
+    const block_user_ids =
+      dataUsers.filter((user: any) => user.relation_status === 'blocked').map((user: any) => user.other_id) || [];
 
     if (userIDs !== undefined && userIDs.length !== 0) {
       const newStateUserIDs: string[] = [];

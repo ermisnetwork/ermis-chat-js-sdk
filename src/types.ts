@@ -1478,6 +1478,8 @@ export type ChannelFilters<ErmisChatGenerics extends ExtendableGenerics = Defaul
       other_roles?: RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'> | PrimitiveFilter<string[]>>;
     } & {
       project_id?: RequireOnlyOne<Pick<QueryFilter<string>, '$eq'> | PrimitiveFilter<string>>;
+    } & {
+      blocked?: RequireOnlyOne<Pick<QueryFilter<boolean>, '$eq'> | PrimitiveFilter<boolean>>;
     }
 >;
 
