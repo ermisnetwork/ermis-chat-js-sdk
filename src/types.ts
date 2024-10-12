@@ -1,4 +1,4 @@
-import { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { StableWSConnection } from './connection';
 import { EVENT_MAP } from './events';
 import { Role } from './permissions';
@@ -3180,3 +3180,4 @@ export type ChainsResponse<ErmisChatGenerics extends ExtendableGenerics = Defaul
 export type AttachmentResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
   attachments: Attachment<ErmisChatGenerics>[];
 };
+export type ExtendAxiosError = AxiosError;

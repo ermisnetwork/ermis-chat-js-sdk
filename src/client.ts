@@ -1804,7 +1804,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       },
     });
 
-    return this.hydrateChannels(data.channels, stateOptions);
+    const { channels, newUserIds } = await this.hydrateChannels(data.channels, stateOptions);
+
+    if (newUserIds.length > 0) {
+      await this.getBatchUsers(newUserIds);
+    }
+
+    return channels;
   }
 
   /**
@@ -1836,7 +1842,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     const data = await this.post<QueryChannelsAPIResponse<ErmisChatGenerics>>(this.baseURL + '/channels', payload);
 
-    return this.hydrateChannels(data.channels, stateOptions);
+    const { channels, newUserIds } = await this.hydrateChannels(data.channels, stateOptions);
+
+    if (newUserIds.length > 0) {
+      await this.getBatchUsers(newUserIds);
+    }
+
+    return channels;
   }
 
   async startCall(payload: any) {
@@ -1913,15 +1925,12 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     }
 
     // ensure we have the users for all the channels we just added
-    if (userIds.length > 0) {
-      const newUserIds = userIds.filter((userId) => {
-        const user = this.state.users[userId];
-        return !user;
-      })
-      await this.getBatchUsers(newUserIds);
-    }
+    const newUserIds = userIds.length > 0 ? userIds.filter((userId) => {
+      const user = this.state.users[userId];
+      return !user;
+    }) : [];
 
-    return channels;
+    return { channels, newUserIds };
   }
 
   /**
