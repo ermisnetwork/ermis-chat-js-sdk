@@ -1505,6 +1505,13 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           if (event.message.pinned) {
             channelState.removePinnedMessage(event.message);
           }
+
+          for (const userId in channelState.read) {
+            if (userId !== event.user?.id && event.message.id === channelState.read[userId].last_read_message_id) {
+              // clear last_read_message_id nếu messageID bị xoá là last_read_message_id
+              channelState.read[userId] = { ...channelState.read[userId], last_read_message_id: undefined };
+            }
+          }
         }
         break;
       case 'message.new':
