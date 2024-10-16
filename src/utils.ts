@@ -81,7 +81,7 @@ export function isOwnUserBaseProperty(property: string) {
   } = {
     channel_mutes: true,
     devices: true,
-    mutes: true,
+    // mutes: true,
     total_unread_count: true,
     unread_channels: true,
     unread_count: true,

@@ -189,11 +189,7 @@ export class StableWSConnection<ErmisChatGenerics extends ExtendableGenerics = D
 
     let rawURL = `${this.client.wsBaseURL}/connect?json=${qs}&api_key=${this.client.key
       }&authorization=${token}&stream-auth-type=${this.client.getAuthType()}&X-Stream-Client=${this.client.getUserAgent()}`;
-
-    // FIXME: This is a temporary fix for the android's issue where the URL is not encoded properly.
-
     rawURL = encodeURI(rawURL);
-
     return rawURL;
   };
 

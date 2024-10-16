@@ -39,7 +39,8 @@ export class ClientState<ErmisChatGenerics extends ExtendableGenerics = DefaultG
     if (user == null) {
       return;
     }
-    this.updateUser(user);
+    // dont update user here
+    // this.updateUser(user);
     if (!this.userChannelReferences[user.id]) {
       this.userChannelReferences[user.id] = {};
     }

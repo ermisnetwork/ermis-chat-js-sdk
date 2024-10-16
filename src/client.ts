@@ -214,9 +214,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   activeChannels: {
     [key: string]: Channel<ErmisChatGenerics>;
   };
-  invitedChannels: {
-    [key: string]: Channel<ErmisChatGenerics>;
-  };
   anonymous: boolean;
   persistUserOnConnectionFailure?: boolean;
   axiosInstance: AxiosInstance;
@@ -340,8 +337,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     this.setUserPromise = null;
     // keeps a reference to all the channels that are in use
     this.activeChannels = {};
-    //
-    this.invitedChannels = {};
 
     // mapping between channel groups and configs
     this.configs = {};
@@ -1312,21 +1307,21 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     if (event.type === 'health.check' && event.me) {
       client.user = event.me;
       client.state.updateUser(event.me);
-      client.mutedChannels = event.me.channel_mutes;
-      client.mutedUsers = event.me.mutes;
+      // client.mutedChannels = event.me.channel_mutes;
+      // client.mutedUsers = event.me.mutes;
     }
 
     if (event.channel && event.type === 'notification.message_new') {
       this._addChannelConfig(event.channel);
     }
 
-    if (event.type === 'notification.channel_mutes_updated' && event.me?.channel_mutes) {
-      this.mutedChannels = event.me.channel_mutes;
-    }
+    // if (event.type === 'notification.channel_mutes_updated' && event.me?.channel_mutes) {
+    //   this.mutedChannels = event.me.channel_mutes;
+    // }
 
-    if (event.type === 'notification.mutes_updated' && event.me?.mutes) {
-      this.mutedUsers = event.me.mutes;
-    }
+    // if (event.type === 'notification.mutes_updated' && event.me?.mutes) {
+    //   this.mutedUsers = event.me.mutes;
+    // }
 
     if (event.type === 'notification.mark_read' && event.unread_channels === 0) {
       const activeChannelKeys = Object.keys(this.activeChannels);
@@ -1565,7 +1560,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
   }
 
   /**
@@ -1646,34 +1641,40 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     let project_id = this.projectId;
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
     const dataUsers = contactResponse.project_id_user_ids[project_id];
-    const userIDs =
-      dataUsers.filter((user: any) => user.relation_status !== 'blocked').map((user: any) => user.other_id) || [];
+    const userIDs: string[] = [];
+    const block_user_ids: string[] = [];
 
-    const block_user_ids =
-      dataUsers.filter((user: any) => user.relation_status === 'blocked').map((user: any) => user.other_id) || [];
-
-    if (userIDs !== undefined && userIDs.length !== 0) {
-      const newStateUserIDs: string[] = [];
-
-      userIDs.forEach((userID) => {
-        const user = this.state.users[userID];
-        if (!user) {
-          newStateUserIDs.push(userID);
-        }
-      });
-
-      if (newStateUserIDs.length > 0) {
-        const fetchedUsers = await this.getBatchUsers(newStateUserIDs);
-        fetchedUsers.data.forEach((user) => {
-          this.state.updateUser(user);
-        });
+    dataUsers.forEach((user: any) => {
+      if (user.relation_status !== 'blocked') {
+        userIDs.push(user.other_id);
+      } else if (user.relation_status === 'blocked') {
+        block_user_ids.push(user.other_id);
       }
-    }
+    });
+
+    // if (userIDs !== undefined && userIDs.length !== 0) {
+    //   const newStateUserIDs: string[] = [];
+
+    //   userIDs.forEach((userID) => {
+    //     const user = this.state.users[userID];
+    //     if (!user) {
+    //       newStateUserIDs.push(userID);
+    //     }
+    //   });
+
+    //   if (newStateUserIDs.length > 0) {
+    //     const fetchedUsers = await this.getBatchUsers(newStateUserIDs);
+    //     fetchedUsers.data.forEach((user) => {
+    //       this.state.updateUser(user);
+    //     });
+    //   }
+    // }
     return {
       contact_user_ids: userIDs,
       block_user_ids,
     };
   }
+
   async getChains(): Promise<ChainsResponse> {
     let chain_response = await this.get<ChainsResponse>(this.baseURL + '/uss/v1/users/chains');
     this.chains = chain_response;
@@ -1780,24 +1781,16 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     options: ChannelOptions = {},
     stateOptions: ChannelStateOptions = {},
   ) {
-    const defaultOptions: ChannelOptions = {
-      state: true,
-      watch: true,
-      presence: false,
-    };
 
     // Make sure we wait for the connect promise if there is a pending one
     await this.wsPromise;
-    if (!this._hasConnectionID()) {
-      defaultOptions.watch = false;
-    }
+
     let project_id = this.projectId;
 
     // Return a list of channels
     const payload = {
       filter_conditions: { ...filterConditions, project_id },
       sort: normalizeQuerySort(sort),
-      ...defaultOptions,
       ...options,
     };
 
@@ -1811,7 +1804,51 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       },
     });
 
-    return this.hydrateActiveChannels(data.channels, stateOptions);
+    const { channels, newUserIds } = await this.hydrateChannels(data.channels, stateOptions);
+
+    if (newUserIds.length > 0) {
+      await this.getBatchUsers(newUserIds);
+    }
+
+    return channels;
+  }
+
+  /**
+  * @param {ChannelFilters<ErmisChatGenerics>} filterConditions for invited channels: just set roles to ['pending'], The "type" field still has the same options as before.
+  * type: ["general", "team", "messaging"],
+  * roles: ["owner", "moder", "member","pending"],
+  * 
+  **/
+  async queryInvitedChannels(
+    filterConditions: ChannelFilters<ErmisChatGenerics>,
+    sort: ChannelSort<ErmisChatGenerics> = [],
+    options: ChannelOptions = {},
+    stateOptions: ChannelStateOptions = {},) {
+
+    // Ensure the roles field is always set to pending.
+    const invitedFilter = { ...filterConditions, roles: ['pending'] };
+
+    // Make sure we wait for the connect promise if there is a pending one
+    await this.wsPromise;
+
+    let project_id = this.projectId;
+
+    // Return a list of channels
+    const payload = {
+      filter_conditions: { ...invitedFilter, project_id },
+      sort: normalizeQuerySort(sort),
+      ...options,
+    };
+
+    const data = await this.post<QueryChannelsAPIResponse<ErmisChatGenerics>>(this.baseURL + '/channels', payload);
+
+    const { channels, newUserIds } = await this.hydrateChannels(data.channels, stateOptions);
+
+    if (newUserIds.length > 0) {
+      await this.getBatchUsers(newUserIds);
+    }
+
+    return channels;
   }
 
   async startCall(payload: any) {
@@ -1849,18 +1886,20 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
   }
 
-  hydrateActiveChannels(
+
+  async hydrateChannels(
     channelsFromApi: ChannelAPIResponse<ErmisChatGenerics>[] = [],
     stateOptions: ChannelStateOptions = {},
   ) {
     const { skipInitialization, offlineMode = false } = stateOptions;
 
-    for (const channelState of channelsFromApi) {
-      this._addChannelConfig(channelState.channel);
-    }
+    // NOTE: we don't send config with channel data anymore
+    // for (const channelState of channelsFromApi) {
+    //   this._addChannelConfig(channelState.channel);
+    // }
 
     const channels: Channel<ErmisChatGenerics>[] = [];
-
+    const userIds: string[] = [];
     for (const channelState of channelsFromApi) {
       const c = this.channel(channelState.channel.type, channelState.channel.id);
       c.data = channelState.channel;
@@ -1868,16 +1907,30 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       c.initialized = !offlineMode;
 
       if (skipInitialization === undefined) {
-        c._initializeState(channelState, 'latest');
+        c._initializeState(channelState, 'latest', (id) => {
+          if (!userIds.includes(id)) {
+            userIds.push(id);
+          }
+        });
       } else if (!skipInitialization.includes(channelState.channel.id)) {
         c.state.clearMessages();
-        c._initializeState(channelState, 'latest');
+        c._initializeState(channelState, 'latest', (id) => {
+          if (!userIds.includes(id)) {
+            userIds.push(id);
+          }
+        });
       }
 
       channels.push(c);
     }
 
-    return channels;
+    // ensure we have the users for all the channels we just added
+    const newUserIds = userIds.length > 0 ? userIds.filter((userId) => {
+      const user = this.state.users[userId];
+      return !user;
+    }) : [];
+
+    return { channels, newUserIds };
   }
 
   /**
@@ -2066,7 +2119,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     // support channel("messaging", {options})
     if (channelIDOrCustom && typeof channelIDOrCustom === 'object') {
-      return this.getChannelByMembers(channelType, channelIDOrCustom);
+      return this.getChannel(channelType, channelIDOrCustom);
     }
 
     // // support channel("messaging", undefined, {options})
@@ -2176,6 +2229,28 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       return channel;
     }
     const channel = new Channel<ErmisChatGenerics>(this, channelType, channelID, custom);
+    this.activeChannels[channel.cid] = channel;
+
+    return channel;
+  };
+  /**
+   *  getChannel - Returns a new channel with the given type, id and custom data
+   * team channel id will be automatically generated from sdk.
+   * */
+  getChannel = (channelType: string, custom: ChannelData<ErmisChatGenerics>) => {
+    const uuid = randomId();
+    const id = `${this.projectId}:${uuid}`;
+    // only allow 1 channel object per cid
+    const cid = `${channelType}:${id}`;
+    if (cid in this.activeChannels && !this.activeChannels[cid].disconnected) {
+      const channel = this.activeChannels[cid];
+      if (Object.keys(custom).length > 0) {
+        channel.data = custom;
+        channel._data = custom;
+      }
+      return channel;
+    }
+    const channel = new Channel<ErmisChatGenerics>(this, channelType, id, custom);
     this.activeChannels[channel.cid] = channel;
 
     return channel;

@@ -56,6 +56,8 @@ import {
   PollVoteData,
   SendMessageOptions,
   AscDesc,
+  Attachment,
+  AttachmentResponse,
 } from './types';
 import { Role } from './permissions';
 
@@ -172,10 +174,13 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {Promise<SendMessageAPIResponse<ErmisChatGenerics>>} The Server Response
    */
   async sendMessage(message: Message<ErmisChatGenerics>, options?: SendMessageOptions) {
-    const id = randomId();
+    if (message.id === undefined) {
+      const id = randomId();
+      message = { ...message, id }
+    }
 
     return await this.getClient().post<SendMessageAPIResponse<ErmisChatGenerics>>(this._channelURL() + '/message', {
-      message: { ...message, id },
+      message: { ...message },
       ...options,
     });
   }
@@ -547,7 +552,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   async queryAttachmentMessages() {
-    return await this.getClient().post(this.getClient().baseURL + `/channels/${this.type}/${this.id}/attachment`);
+    return await this.getClient().post<AttachmentResponse<ErmisChatGenerics>>(this.getClient().baseURL + `/channels/${this.type}/${this.id}/attachment`);
   }
 
   async searchMessage(search_term: string, offset: number) {
@@ -1079,38 +1084,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       data: this._data,
       state: true,
       ...update_options,
-    });
-    // update member profiles with user information
-    const newStateUserIDs: string[] = [];
-
-    state.members.forEach((member) => {
-      const userId = member.user?.id || member.user_id || '';
-      const user = this.getClient().state.users[userId];
-
-      if (!user) {
-        newStateUserIDs.push(userId);
-      }
-    });
-
-    let newStateUsers: { [key: string]: any } = {};
-    if (newStateUserIDs.length > 0) {
-      // Fetch user information if not found
-      const fetchedUsers = await this.getClient().getBatchUsers(newStateUserIDs);
-      fetchedUsers.data.forEach((user) => {
-        this.getClient().state.updateUser(user);
-        newStateUsers[user.id] = user;
-      });
-    }
-
-    // Update member profiles with user information
-    state.members.forEach((member) => {
-      const userId = member.user?.id || '';
-      const user = this.getClient().state.users[userId] || newStateUsers[userId];
-
-      if (user && member.user) {
-        const updatedUser = { ...member.user, ...user };
-        member.user = updatedUser;
-      }
     });
 
     // update the channel id if it was missing
@@ -1754,6 +1727,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   _initializeState(
     state: ChannelAPIResponse<ErmisChatGenerics>,
     messageSetToAddToIfDoesNotExist: MessageSetType = 'latest',
+    updateUserIds?: (id: string) => void
   ) {
     const { state: clientState, user, userID } = this.getClient();
 
@@ -1761,6 +1735,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     if (state.members) {
       for (const member of state.members) {
         if (member.user) {
+          if (updateUserIds) {
+            updateUserIds(member.user.id)
+          };
           clientState.updateUserReference(member.user, this.cid);
         }
       }
@@ -1784,15 +1761,16 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     if (state.watcher_count !== undefined) {
       this.state.watcher_count = state.watcher_count;
     }
-    // convert the arrays into objects for easier syncing...
-    if (state.watchers) {
-      for (const watcher of state.watchers) {
-        if (watcher) {
-          clientState.updateUserReference(watcher, this.cid);
-          this.state.watchers[watcher.id] = watcher;
-        }
-      }
-    }
+    // NOTE: we don't send the watchers with the channel data anymore 
+    // // convert the arrays into objects for easier syncing...
+    // if (state.watchers) {
+    //   for (const watcher of state.watchers) {
+    //     if (watcher) {
+    //       clientState.updateUserReference(watcher, this.cid);
+    //       this.state.watchers[watcher.id] = watcher;
+    //     }
+    //   }
+    // }
 
     // initialize read state to last message or current time if the channel is empty
     // if the user is a member, this value will be overwritten later on otherwise this ensures
