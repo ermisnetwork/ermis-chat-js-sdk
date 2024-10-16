@@ -3180,4 +3180,4 @@ export type ChainsResponse<ErmisChatGenerics extends ExtendableGenerics = Defaul
 export type AttachmentResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
   attachments: Attachment<ErmisChatGenerics>[];
 };
-export type ExtendAxiosError = AxiosError;
+export class ExtendAxiosError<T = any> extends AxiosError<T> { };
