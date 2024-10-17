@@ -69,9 +69,11 @@ $ yarn add ermis-chat-js-sdk
 
 You need to install WalletConnect to sign in and login to the Chat SDK. For more details, refer to the [WalletConnect docs](https://docs.walletconnect.com/appkit/javascript/core/installation) and [Wagmi docs](https://wagmi.sh).
 
+> Note: For a list of supported wallets, see [here](https://explorer.walletconnect.com/?type=wallet)
+
 ### Step 4: Integrate Login via Wallet
 
-After installing WalletConnect, you need to import `ErmisAuth` from Ermis to connect to the login flow in Ermis Chat.:
+After installing WalletConnect, you need to import `ErmisAuth` from Ermis to connect to the login flow in Ermis Chat:
 
 ```javascript
 import { ErmisAuth } from 'ermis-chat-js-sdk';
@@ -690,18 +692,16 @@ await channel.unbanMembers(list_user_id);
 ```
 
 **5.5. Channel Capabilities**
-This feature allows `owner` role to configure permissions for members with the `member` role to send, edit, delete, and react to messages, ensuring chat content control.
+This feature allows `owner` role to configure permissions for members with the `member` role, enabling a capability adds it to the capabilities, disabling it removes it from the capabilities.
 
 ```javascript
-const capabilities = ['send-message', 'update-own-message'];
-
+const capabilities = channel.getCapabilitiesMember();
 await channel.updateCapabilities(capabilities);
 ```
 
-| Name                | Type  | Required | Description                       |
-| :------------------ | :---- | :------- | :-------------------------------- |
-| add_capabilities    | array | Yes      | Capabilities you want to adding   |
-| remove_capabilities | array | Yes      | Capabilities you want to removing |
+| Name         | Type  | Required | Description                                                                                                                                  |
+| :----------- | :---- | :------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| capabilities | array | Yes      | Capabilities you want to adding to the member in channel. Enabling a capability adds it to the array, disabling it removes it from the array |
 
 **Get capabilities with the `member` role in channel**
 Retrieves the permissions for a member with the role of "member," helping to identify their rights and functions within the channel
@@ -711,14 +711,23 @@ channel.getCapabilitiesMember();
 ```
 
 **Name Capabilities**
-Includes permissions such as `send-message`, `update-own-message`, `delete-own-message`, `send-reaction`, allowing users to send messages, edit, delete their own messages, and send reactions.
+These are the permissions applied to members within a channel.
 
-| Name               | What it indicates                               |
-| :----------------- | :---------------------------------------------- |
-| send-message       | Ability to send a message                       |
-| update-own-message | Ability to update own messages in the channel   |
-| delete-own-message | Ability to delete own messages from the channel |
-| send-reaction      | Ability to send reactions                       |
+| Name                  | What it indicates                               |
+| :-------------------- | :---------------------------------------------- |
+| `send-message`        | Ability to send a message                       |
+| `update-own-message`  | Ability to update own messages in the channel   |
+| `delete-own-message`  | Ability to delete own messages from the channel |
+| `send-reaction`       | Ability to send reactions                       |
+| `create-call`         | Ability to create call in the channel           |
+| `join-call`           | Ability to join call in the channel             |
+| `send-links`          | Ability to send links messages in the channel   |
+| `quote-message`       | Ability to quote message in the channel         |
+| `send-reply`          | Ability to send reply message in the channel    |
+| `search-messages`     | Ability to search messages in the channel       |
+| `send-typing-events`  | Ability to send typing events in the channel    |
+| `upload-file`         | Ability to upload file in the channel           |
+| `delete-own-reaction` | Ability to delete reaction in the channel       |
 
 **5.6. Query Attachments in a channel**
 This feature allows users to view all media files shared in a channel, including images, videos, and audio.
