@@ -693,10 +693,9 @@ await channel.unbanMembers(list_user_id);
 This feature allows `owner` role to configure permissions for members with the `member` role to send, edit, delete, and react to messages, ensuring chat content control.
 
 ```javascript
-const add_capabilities = ['send-message', 'update-own-message'];
-const remove_capabilities = ['delete-own-message', 'send-reaction'];
+const capabilities = ['send-message', 'update-own-message'];
 
-await channel.updateCapabilities(add_capabilities, remove_capabilities);
+await channel.updateCapabilities(capabilities);
 ```
 
 | Name                | Type  | Required | Description                       |
