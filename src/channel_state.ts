@@ -24,6 +24,7 @@ type ChannelReadStatus<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     user: UserResponse<ErmisChatGenerics>;
     first_unread_message_id?: string;
     last_read_message_id?: string;
+    last_send?: string;
   }
 >;
 

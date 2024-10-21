@@ -755,6 +755,7 @@ export type ReadResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultG
   user: UserResponse<ErmisChatGenerics>;
   last_read_message_id?: string;
   unread_messages?: number;
+  last_send?: string;
 };
 
 export type SearchAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {

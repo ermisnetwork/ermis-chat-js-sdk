@@ -1483,7 +1483,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
           for (const userId in channelState.read) {
             if (userId !== event.user?.id && event.message.id === channelState.read[userId].last_read_message_id) {
-              // clear last_read_message_id nếu messageID bị xoá là last_read_message_id
+              // Clear last_read_message_id if the deleted message is the last_read_message_id
               channelState.read[userId] = { ...channelState.read[userId], last_read_message_id: undefined };
             }
           }
@@ -1796,6 +1796,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           last_read_message_id: read.last_read_message_id,
           unread_messages: read.unread_messages ?? 0,
           user: read.user,
+          last_send: read.last_send,
         };
 
         if (read.user.id === user?.id) {
