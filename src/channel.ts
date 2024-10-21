@@ -1095,7 +1095,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       this.cid = state.channel.cid;
 
       // set the channel as active...
-      const membersStr = state.members
+      const membersStr = state.channel.members
         .map((member) => member.user_id || member.user?.id)
         .sort()
         .join(',');
@@ -1734,8 +1734,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     const { state: clientState, user, userID } = this.getClient();
 
     // add the Users
-    if (state.members) {
-      for (const member of state.members) {
+    if (state.channel.members) {
+      for (const member of state.channel.members) {
         if (member.user) {
           if (updateUserIds) {
             updateUserIds(member.user.id);
@@ -1805,8 +1805,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       }
     }
 
-    if (state.members) {
-      this.state.members = state.members.reduce((acc, member) => {
+    if (state.channel.members) {
+      this.state.members = state.channel.members.reduce((acc, member) => {
         if (member.user) {
           acc[member.user.id] = member;
         }

@@ -779,6 +779,30 @@ The unblock direct channel feature allows users to resume messaging, triggering 
 await channel.unblockUser();
 ```
 
+**5.8. Set cooldown messages for channel**
+Cooldown messages for a `team` channel are set by admin or moderators, limiting how frequently members can send messages.
+
+> **Note**: Only allows set cooldown messages for group channels with type `team`, not applicable for direct channels with type `messaging`
+
+```javascript
+const miliseconds = 10000;
+await channel.update({ member_message_cooldown: miliseconds });
+```
+
+**Cooldown periods:**
+
+- `0` milliseconds: No cooldown, members can send messages without any delay
+- `10000` milliseconds (10 seconds): Members must wait 10 seconds between sending messages
+- `30000` milliseconds (30 seconds): Members must wait 30 seconds between sending messages
+- `60000` milliseconds (1 minute): Members must wait 1 minute between sending messages
+- `300000` milliseconds (5 minutes): Members must wait 5 minutes between sending messages
+- `900000` milliseconds (15 minutes): Members must wait 15 minutes between sending messages
+- `3600000` milliseconds (1 hour): Members must wait 1 hour between sending messages
+
+| Name                    | Type   | Required | Description                                                                                  |
+| :---------------------- | :----- | :------- | :------------------------------------------------------------------------------------------- |
+| member_message_cooldown | number | Yes      | is the waiting time (in milliseconds) between messages that members can send in the channel. |
+
 <br />
 
 ### Message management
@@ -1238,20 +1262,23 @@ channel.on('typing.stop', (event) => {
 
 Below you can find the complete list of system message that are returned by messages from channel. You can define from syntax message by description.
 
-| Name                            | Syntax                   | Description                                       |
-| :------------------------------ | :----------------------- | :------------------------------------------------ |
-| UpdateChannelName               | `1 user_id channel_name` | Member X updated name of channel                  |
-| UpdateChannelImage              | `2 user_id`              | Member X updated image of channel                 |
-| UpdateChannelDescription        | `3 user_id`              | Member X updated description of channel           |
-| MemberRemoved                   | `4 user_id`              | Member X has been removed from this channel       |
-| MemberBanned                    | `5 user_id`              | Member X has been banned from interacting         |
-| MemberUnbanned                  | `6 user_id`              | Member X has been unbanned from interacting       |
-| MemberPromoted                  | `7 user_id`              | Member X has been assigned as the moderator       |
-| MemberDemoted                   | `8 user_id`              | Member X has been demoted to member               |
-| UpdateChannelMemberCapabilities | `9 user_id`              | Member X has updated member permission of channel |
-| InviteAccepted                  | `10 user_id`             | Member X has joined this channel                  |
-| InviteRejected                  | `11 user_id`             | Member X has rejected to join this channel        |
-| MemberLeave                     | `12 user_id`             | Member X has leaved this channel                  |
+| Name                            | Syntax                   | Description                                        |
+| :------------------------------ | :----------------------- | :------------------------------------------------- |
+| UpdateChannelName               | `1 user_id channel_name` | Member X updated name of channel                   |
+| UpdateChannelImage              | `2 user_id`              | Member X updated image of channel                  |
+| UpdateChannelDescription        | `3 user_id`              | Member X updated description of channel            |
+| MemberRemoved                   | `4 user_id`              | Member X has been removed from this channel        |
+| MemberBanned                    | `5 user_id`              | Member X has been banned from interacting          |
+| MemberUnbanned                  | `6 user_id`              | Member X has been unbanned from interacting        |
+| MemberPromoted                  | `7 user_id`              | Member X has been assigned as the moderator        |
+| MemberDemoted                   | `8 user_id`              | Member X has been demoted to member                |
+| UpdateChannelMemberCapabilities | `9 user_id`              | Member X has updated member permission of channel  |
+| InviteAccepted                  | `10 user_id`             | Member X has joined this channel                   |
+| InviteRejected                  | `11 user_id`             | Member X has rejected to join this channel         |
+| MemberLeave                     | `12 user_id`             | Member X has leaved this channel                   |
+| TruncateMessages                | `13 user_id`             | Member X has truncate all messages of this channel |
+| UpdateMemberMessageCooldown     | `15 user_id duration`    | Member X has update channel message cooldown       |
+| UpdateFilterWords               | `16 user_id`             | Member X has update channel filter words           |
 
 <br />
 
