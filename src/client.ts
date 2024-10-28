@@ -1674,7 +1674,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     userIds.forEach((contact: Contact) => {
       const userID = contact.other_id;
       const state_user = this.state.users[userID];
-      const user = state_user ? state_user : { id: userID }
+      const user = state_user ? state_user : { id: userID };
       switch (contact.relation_status) {
         case 'blocked':
           block_users.push(user);
