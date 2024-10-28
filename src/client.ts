@@ -200,6 +200,7 @@ import {
   ChainsResponse,
   ContactResult,
   GetTokenResponse,
+  Contact,
 } from './types';
 import { InsightMetrics } from './insights';
 import { Thread } from './thread';
@@ -1586,7 +1587,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
   }
 
   /**
@@ -1666,38 +1667,28 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   async queryContacts(): Promise<ContactResult> {
     let project_id = this.projectId;
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
-    const dataUsers = contactResponse.project_id_user_ids[project_id];
-    const userIDs: string[] = [];
-    const block_user_ids: string[] = [];
+    const userIds = contactResponse.project_id_user_ids[project_id];
+    const contact_users: UserResponse<ErmisChatGenerics>[] = [];
+    const block_users: UserResponse<ErmisChatGenerics>[] = [];
 
-    dataUsers.forEach((user: any) => {
-      if (user.relation_status !== 'blocked') {
-        userIDs.push(user.other_id);
-      } else if (user.relation_status === 'blocked') {
-        block_user_ids.push(user.other_id);
+    userIds.forEach((contact: Contact) => {
+      const userID = contact.other_id;
+      const state_user = this.state.users[userID];
+      const user = state_user ? state_user : { id: userID }
+      switch (contact.relation_status) {
+        case 'blocked':
+          block_users.push(user);
+          break;
+        case 'normal':
+          contact_users.push(user);
+          break;
+        default:
       }
     });
 
-    // if (userIDs !== undefined && userIDs.length !== 0) {
-    //   const newStateUserIDs: string[] = [];
-
-    //   userIDs.forEach((userID) => {
-    //     const user = this.state.users[userID];
-    //     if (!user) {
-    //       newStateUserIDs.push(userID);
-    //     }
-    //   });
-
-    //   if (newStateUserIDs.length > 0) {
-    //     const fetchedUsers = await this.getBatchUsers(newStateUserIDs);
-    //     fetchedUsers.data.forEach((user) => {
-    //       this.state.updateUser(user);
-    //     });
-    //   }
-    // }
     return {
-      contact_user_ids: userIDs,
-      block_user_ids,
+      contact_users,
+      block_users,
     };
   }
 
@@ -1952,9 +1943,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     const newUserIds =
       userIds.length > 0
         ? userIds.filter((userId) => {
-            const user = this.state.users[userId];
-            return !user;
-          })
+          const user = this.state.users[userId];
+          return !user;
+        })
         : [];
 
     return { channels, newUserIds };
