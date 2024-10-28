@@ -65,6 +65,8 @@ $ npm install ermis-chat-js-sdk
 $ yarn add ermis-chat-js-sdk
 ```
 
+> Note: If you want to initialize the chat client using the client's authentication method without using sign via wallet, skip steps 3 and 4 and proceed from [here](#2-initial-token-method)
+
 ### Step 3: Install WalletConnect
 
 You need to install WalletConnect to sign in and login to the Chat SDK. For more details, refer to the [WalletConnect docs](https://docs.walletconnect.com/appkit/javascript/core/installation) and [Wagmi docs](https://wagmi.sh).
@@ -189,7 +191,7 @@ function App() {
 
 ### Step 5: Initialize the Chat SDk
 
-On the client-side, initialize the Chat client with your **API key** and **ProjectID**:
+On the client-side, initialize the Chat client with your **API key** and **ProjectID**.
 
 ```javascript
 import { ErmisChat } from 'ermis-chat-js-sdk';
@@ -202,7 +204,12 @@ const options = {
 const chatClient = ErmisChat.getInstance(API_KEY, PROJECT_ID, options);
 ```
 
-Once initialized, you must specify the current user with connectUser:
+Once initialized, you must specify the current user with `connectUser`.
+We provide two methods to initialize the client:
+
+#### 1. Sign method via Wallet:
+
+The client will sign a message using their wallet. We will receive and verify the signature. For cases where direct authentication with the client's personal wallet is required.
 
 ```javascript
 await chatClient.connectUser(
@@ -215,10 +222,33 @@ await chatClient.connectUser(
 );
 ```
 
-| Name    | Type   | Required | Description                                               |
-| :------ | :----- | :------- | :-------------------------------------------------------- |
-| user_id | string | Yes      | User ID obtained from the `getAuth` function              |
-| token   | string | Yes      | Authentication token obtained from the `getAuth` function |
+| Name      | Type   | Required | Description                                               |
+| :-------- | :----- | :------- | :-------------------------------------------------------- |
+| `user_id` | string | Yes      | User ID obtained from the `getAuth` function              |
+| `token`   | string | Yes      | Authentication token obtained from the `getAuth` function |
+
+#### 2. Initial token method:
+
+The client provides an initial token, which is a token issued by the client. This method also requires the `external_auth` = true parameter. For customers using their own authentication system and providing tokens through this method
+
+```javascript
+const external_auth = true;
+await chatClient.connectUser(
+  {
+    api_key: API_KEY,
+    id: user_id,
+    name: user_id,
+  },
+  token,
+  external_auth,
+);
+```
+
+| Name            | Type    | Required | Description                                                                                                                                                                                                                                              |
+| :-------------- | :------ | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_id`       | string  | Yes      | This is the user ID provided by the client                                                                                                                                                                                                               |
+| `token`         | string  | Yes      | This is the token provided by the client                                                                                                                                                                                                                 |
+| `external_auth` | boolean | No       | This is the condition for initializing the client through the client's authentication system. When `external_auth` is set to true, the system will use the authentication method based on the token and the public key previously provided by the client |
 
 ### Step 6: Sending your first message
 

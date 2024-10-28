@@ -199,6 +199,8 @@ import {
   UsersResponse,
   ChainsResponse,
   ContactResult,
+  GetTokenResponse,
+  Contact,
 } from './types';
 import { InsightMetrics } from './insights';
 import { Thread } from './thread';
@@ -489,15 +491,40 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    *
    * @return {ConnectAPIResponse<ErmisChatGenerics>} Returns a promise that resolves when the connection is setup
    */
+
+  async getExternalAuthToken(apikey: string, name?: string, avatar?: string) {
+    const params: any = { apikey };
+    if (name!!) {
+      params.name = name;
+    }
+    if (avatar!!) {
+      params.avatar = avatar;
+    }
+    return await this.get<GetTokenResponse>(this.baseURL + '/uss/v1/get_token/external_auth', params);
+  }
+
   connectUser = async (
     user: OwnUserResponse<ErmisChatGenerics> | UserResponse<ErmisChatGenerics>,
     userTokenOrProvider: TokenOrProvider,
+    extenal_auth?: boolean, // pass true if you are using external auth
   ) => {
     this.logger('info', 'client:connectUser() - started', {
       tags: ['connection', 'client'],
     });
     if (!user.id) {
       throw new Error('The "id" field on the user is missing');
+    }
+
+    // If external auth is enabled, get the token from the server
+    if (extenal_auth) {
+      this.tokenManager.setTokenOrProvider(userTokenOrProvider, user);
+      try {
+        const external_auth_token = await this.getExternalAuthToken(this.key, user.name, user.avatar);
+
+        userTokenOrProvider = external_auth_token.token;
+      } catch (error) {
+        throw new Error('Failed to get external auth token');
+      }
     }
 
     /**
@@ -1640,38 +1667,28 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   async queryContacts(): Promise<ContactResult> {
     let project_id = this.projectId;
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
-    const dataUsers = contactResponse.project_id_user_ids[project_id];
-    const userIDs: string[] = [];
-    const block_user_ids: string[] = [];
+    const userIds = contactResponse.project_id_user_ids[project_id];
+    const contact_users: UserResponse<ErmisChatGenerics>[] = [];
+    const block_users: UserResponse<ErmisChatGenerics>[] = [];
 
-    dataUsers.forEach((user: any) => {
-      if (user.relation_status !== 'blocked') {
-        userIDs.push(user.other_id);
-      } else if (user.relation_status === 'blocked') {
-        block_user_ids.push(user.other_id);
+    userIds.forEach((contact: Contact) => {
+      const userID = contact.other_id;
+      const state_user = this.state.users[userID];
+      const user = state_user ? state_user : { id: userID };
+      switch (contact.relation_status) {
+        case 'blocked':
+          block_users.push(user);
+          break;
+        case 'normal':
+          contact_users.push(user);
+          break;
+        default:
       }
     });
 
-    // if (userIDs !== undefined && userIDs.length !== 0) {
-    //   const newStateUserIDs: string[] = [];
-
-    //   userIDs.forEach((userID) => {
-    //     const user = this.state.users[userID];
-    //     if (!user) {
-    //       newStateUserIDs.push(userID);
-    //     }
-    //   });
-
-    //   if (newStateUserIDs.length > 0) {
-    //     const fetchedUsers = await this.getBatchUsers(newStateUserIDs);
-    //     fetchedUsers.data.forEach((user) => {
-    //       this.state.updateUser(user);
-    //     });
-    //   }
-    // }
     return {
-      contact_user_ids: userIDs,
-      block_user_ids,
+      contact_users,
+      block_users,
     };
   }
 
@@ -1781,7 +1798,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     options: ChannelOptions = {},
     stateOptions: ChannelStateOptions = {},
   ) {
-
     // Make sure we wait for the connect promise if there is a pending one
     await this.wsPromise;
 
@@ -1814,17 +1830,17 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   }
 
   /**
-  * @param {ChannelFilters<ErmisChatGenerics>} filterConditions for invited channels: just set roles to ['pending'], The "type" field still has the same options as before.
-  * type: ["general", "team", "messaging"],
-  * roles: ["owner", "moder", "member","pending"],
-  * 
-  **/
+   * @param {ChannelFilters<ErmisChatGenerics>} filterConditions for invited channels: just set roles to ['pending'], The "type" field still has the same options as before.
+   * type: ["general", "team", "messaging"],
+   * roles: ["owner", "moder", "member","pending"],
+   *
+   **/
   async queryInvitedChannels(
     filterConditions: ChannelFilters<ErmisChatGenerics>,
     sort: ChannelSort<ErmisChatGenerics> = [],
     options: ChannelOptions = {},
-    stateOptions: ChannelStateOptions = {},) {
-
+    stateOptions: ChannelStateOptions = {},
+  ) {
     // Ensure the roles field is always set to pending.
     const invitedFilter = { ...filterConditions, roles: ['pending'] };
 
@@ -1886,7 +1902,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
   }
 
-
   async hydrateChannels(
     channelsFromApi: ChannelAPIResponse<ErmisChatGenerics>[] = [],
     stateOptions: ChannelStateOptions = {},
@@ -1925,10 +1940,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     }
 
     // ensure we have the users for all the channels we just added
-    const newUserIds = userIds.length > 0 ? userIds.filter((userId) => {
-      const user = this.state.users[userId];
-      return !user;
-    }) : [];
+    const newUserIds =
+      userIds.length > 0
+        ? userIds.filter((userId) => {
+          const user = this.state.users[userId];
+          return !user;
+        })
+        : [];
 
     return { channels, newUserIds };
   }

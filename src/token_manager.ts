@@ -40,8 +40,14 @@ export class TokenManager<ErmisChatGenerics extends ExtendableGenerics = Default
    * @param {TokenOrProvider} tokenOrProvider
    * @param {UserResponse<ErmisChatGenerics>} user
    */
-  setTokenOrProvider = async (tokenOrProvider: TokenOrProvider, user: UserResponse<ErmisChatGenerics>) => {
-    this.validateToken(tokenOrProvider, user);
+  setTokenOrProvider = async (
+    tokenOrProvider: TokenOrProvider,
+    user: UserResponse<ErmisChatGenerics>,
+    is_bind?: boolean,
+  ) => {
+    if (!is_bind) {
+      this.validateToken(tokenOrProvider, user);
+    }
     this.user = user;
 
     if (isFunction(tokenOrProvider)) {
