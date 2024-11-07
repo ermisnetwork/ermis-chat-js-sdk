@@ -435,7 +435,7 @@ await chatClient.updateProfile(name, about_me);
 
 #### 6. Get contact
 
-The function returns the list of `contact_user_ids` (direct channels) and `block_user_ids` (blocked users) in the chat SDK
+The function returns the list of `contact_users` (direct channels) and `block_users` (blocked users) in the chat SDK
 
 ```javascript
 await chatClient.queryContacts();
@@ -445,11 +445,30 @@ await chatClient.queryContacts();
 
 ```javascript
 {
-  "contact_user_ids": [
-    "0xa1ccc3bb50ad976d5cd6c772c4ccc5cd5e18de3a"
+  "contact_users": [
+    {
+      "id": "user_id_1",
+      "name": "user_id_1",
+      "avatar": null,
+      "about_me": null,
+      "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+    },
+    {
+      "id": "user_id_2",
+      "name": "user_id_2",
+      "avatar": "https://hn.storage.weodata.vn/namwifi/ermis/staging/t9qeoAksvxPHSrGeiDvxCvWdzek94sUm",
+      "about_me": null,
+      "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+    },
   ],
-  "block_user_ids": [
-    "0x8ba208a3bfb80edd7fc5febf5666e146a3c8722d"
+  "block_users": [
+    {
+      "id": "user_id_3",
+      "name": "user_id_3",
+      "avatar": null,
+      "about_me": null,
+      "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+    },
   ]
 }
 ```
@@ -555,14 +574,16 @@ await channel.create();
 const channel = await chatClient.channel('team', {
   name: 'Ermis group',
   members: ['user_id_1', 'user_id_2', 'user_id_3', ...],
+  public: false,
 });
 await channel.create();
 ```
 
-| Name    | Type   | Required | Description                                      |
-| :------ | :----- | :------- | :----------------------------------------------- |
-| name    | string | Yes      | Display name for the channel                     |
-| members | array  | Yes      | List user id you want to adding for this channel |
+| Name    | Type    | Required | Description                                                            |
+| :------ | :------ | :------- | :--------------------------------------------------------------------- |
+| name    | string  | Yes      | Display name for the channel                                           |
+| members | array   | Yes      | List user id you want to adding for this channel                       |
+| public  | boolean | Yes      | If public is `true`, the channel is public. If `false`, it is private. |
 
 > **Note**: The channel is created, allowing only the creator's friends to be added, maintaining security and connection.
 
@@ -577,8 +598,13 @@ const channel_id = 'b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c
 const channel = chatClient.channel(channel_type, channel_id);
 
 // accept the invite
-await channel.acceptInvite();
+const action = 'accept'; // 'join'
+await channel.acceptInvite(action);
 ```
+
+| Name   | Type   | Required | Description                                                                             |
+| :----- | :----- | :------- | :-------------------------------------------------------------------------------------- |
+| action | string | Yes      | If `accept` to approve an invite. If `join` to enter a public channel via a public link |
 
 **Reject the invitation**
 
@@ -833,6 +859,53 @@ await channel.update({ member_message_cooldown: miliseconds });
 | :---------------------- | :----- | :------- | :------------------------------------------------------------------------------------------- |
 | member_message_cooldown | number | Yes      | is the waiting time (in milliseconds) between messages that members can send in the channel. |
 
+#### 6. Search public channel
+
+The public channel search feature allows users to find public channels, making it easy to connect and join open communities
+
+```javascript
+const term = 'room public 1';
+const offset = 0;
+const limit = 25;
+
+await chatClient.searchPublicChannel(term, offset, limit);
+```
+
+**Response**
+
+```javascript
+{
+  "search_result": {
+    "limit": 25,
+    "offset": 0,
+    "total": 2,
+    "channels": [
+      {
+        "index": "a7e6d4b2-4aaa-4ee1-862a-8ecaddee8d71",
+        "cid": "team:b44937e4-c0d4-4a73-847c-3730a923ce83:a7e6d4b2-4aaa-4ee1-862a-8ecaddee8d71",
+        "type": "team",
+        "name": "room T1 public",
+        "image": "",
+        "description": "hihihi",
+        "created_at": "2024-11-04T10:11:40.654364Z",
+        "created_by": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+      },
+      {
+        "index": "vinh-thang-room",
+        "cid": "team:b44937e4-c0d4-4a73-847c-3730a923ce83:vinh-thang-room",
+        "type": "team",
+        "name": "Vinh-Thang-Room",
+        "image": "https://img-cdn.pixlr.com/image-generator/history/65bb506dcb310754719cf81f/ede935de-1138-4f66-8ed7-44bd16efc709/medium.webp",
+        "description": "long description for this channel",
+        "created_at": "2024-10-21T03:18:40.463468Z",
+        "created_by": "0x360a45f70de193090a1b13da8393a02f9119aecd"
+      }
+    ]
+  },
+  "duration": "16ms"
+}
+```
+
 <br />
 
 ### Message management
@@ -991,6 +1064,57 @@ await channel.sendMessage({
       },
       "created_at": "2024-09-06T10:27:50.361815802+00:00"
     }
+  },
+  "duration": "0ms"
+}
+```
+
+**1.4 Send message with mentions**
+Allows users to mention others by typing `@`, displaying the selected name and ID.
+
+> **Note**: Only allows send message with mentions for group channels with type `team`, not applicable for direct channels with type `messaging`
+
+**Case with specific mentions**:
+
+```javascript
+await channel.sendMessage({
+  text: '@mention_id_1 @mention_id_2 Hello',
+  mentioned_all: false, // mentions only specified users
+  mentioned_users: ['mention_id_1', 'mention_id_2'],
+});
+```
+
+**Case with mentioning everyone**:
+
+```javascript
+await channel.sendMessage({
+  text: '@all Hello everyone',
+  mentioned_all: true, // mentions all users in the channel
+  mentioned_users: [], // An empty array [] since all users are mentioned
+});
+```
+
+| Name            | Type    | Required | Description                                                                                                                                                                                    |
+| :-------------- | :------ | :------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| text            | string  | Yes      | The message content, which can include mention IDs (e.g., `@mention_id_1 @mention_id_2 Hello`)                                                                                                 |
+| mentioned_all   | boolean | No       | A boolean that, if `true`, mentions all users in the channel. If `false`, only specific users in mentioned_users are mentioned                                                                 |
+| mentioned_users | array   | No       | An array containing the IDs of the users being mentioned in the message. Each ID in the array (e.g., `mention_id_1`, `mention_id_2`) represents a user who will receive a mention notification |
+
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "99873843-757f-4b3a-95d0-0773314fb115",
+    "mentioned_all": false,
+    "mentioned_users": ['mention_id_1', 'mention_id_2'],
+    "text": "@mention_id_1 @mention_id_2 Hello",
+    "type": "regular",
+    "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+    "user": {
+      "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "created_at": "2024-08-29T10:44:40.022289401+00:00"
   },
   "duration": "0ms"
 }

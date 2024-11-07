@@ -1590,7 +1590,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
   }
 
   /**
@@ -1954,9 +1954,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     const newUserIds =
       userIds.length > 0
         ? userIds.filter((userId) => {
-          const user = this.state.users[userId];
-          return !user;
-        })
+            const user = this.state.users[userId];
+            return !user;
+          })
         : [];
 
     return { channels, newUserIds };
@@ -1996,6 +1996,17 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     await this.wsPromise;
 
     return await this.get<SearchAPIResponse<ErmisChatGenerics>>(this.baseURL + '/search', { payload });
+  }
+
+  async searchPublicChannel(search_term: string, offset = 0, limit = 25) {
+    let project_id = this.projectId;
+
+    return await this.post<APIResponse>(this.baseURL + `/channels/public/search`, {
+      project_id,
+      search_term,
+      limit: limit,
+      offset: offset,
+    });
   }
 
   /**
