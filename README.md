@@ -574,14 +574,16 @@ await channel.create();
 const channel = await chatClient.channel('team', {
   name: 'Ermis group',
   members: ['user_id_1', 'user_id_2', 'user_id_3', ...],
+  public: false,
 });
 await channel.create();
 ```
 
-| Name    | Type   | Required | Description                                      |
-| :------ | :----- | :------- | :----------------------------------------------- |
-| name    | string | Yes      | Display name for the channel                     |
-| members | array  | Yes      | List user id you want to adding for this channel |
+| Name    | Type    | Required | Description                                                            |
+| :------ | :------ | :------- | :--------------------------------------------------------------------- |
+| name    | string  | Yes      | Display name for the channel                                           |
+| members | array   | Yes      | List user id you want to adding for this channel                       |
+| public  | boolean | Yes      | If public is `true`, the channel is public. If `false`, it is private. |
 
 > **Note**: The channel is created, allowing only the creator's friends to be added, maintaining security and connection.
 
@@ -596,8 +598,13 @@ const channel_id = 'b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c
 const channel = chatClient.channel(channel_type, channel_id);
 
 // accept the invite
-await channel.acceptInvite();
+const action = 'accept'; // 'join'
+await channel.acceptInvite(action);
 ```
+
+| Name   | Type   | Required | Description                                                                             |
+| :----- | :----- | :------- | :-------------------------------------------------------------------------------------- |
+| action | string | Yes      | If `accept` to approve an invite. If `join` to enter a public channel via a public link |
 
 **Reject the invitation**
 
@@ -851,6 +858,53 @@ await channel.update({ member_message_cooldown: miliseconds });
 | Name                    | Type   | Required | Description                                                                                  |
 | :---------------------- | :----- | :------- | :------------------------------------------------------------------------------------------- |
 | member_message_cooldown | number | Yes      | is the waiting time (in milliseconds) between messages that members can send in the channel. |
+
+#### 6. Search public channel
+
+The public channel search feature allows users to find public channels, making it easy to connect and join open communities
+
+```javascript
+const term = 'room public 1';
+const offset = 0;
+const limit = 25;
+
+await chatClient.searchPublicChannel(term, offset, limit);
+```
+
+**Response**
+
+```javascript
+{
+  "search_result": {
+    "limit": 25,
+    "offset": 0,
+    "total": 2,
+    "channels": [
+      {
+        "index": "a7e6d4b2-4aaa-4ee1-862a-8ecaddee8d71",
+        "cid": "team:b44937e4-c0d4-4a73-847c-3730a923ce83:a7e6d4b2-4aaa-4ee1-862a-8ecaddee8d71",
+        "type": "team",
+        "name": "room T1 public",
+        "image": "",
+        "description": "hihihi",
+        "created_at": "2024-11-04T10:11:40.654364Z",
+        "created_by": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+      },
+      {
+        "index": "vinh-thang-room",
+        "cid": "team:b44937e4-c0d4-4a73-847c-3730a923ce83:vinh-thang-room",
+        "type": "team",
+        "name": "Vinh-Thang-Room",
+        "image": "https://img-cdn.pixlr.com/image-generator/history/65bb506dcb310754719cf81f/ede935de-1138-4f66-8ed7-44bd16efc709/medium.webp",
+        "description": "long description for this channel",
+        "created_at": "2024-10-21T03:18:40.463468Z",
+        "created_by": "0x360a45f70de193090a1b13da8393a02f9119aecd"
+      }
+    ]
+  },
+  "duration": "16ms"
+}
+```
 
 <br />
 

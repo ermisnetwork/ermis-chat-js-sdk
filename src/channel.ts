@@ -486,13 +486,13 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    *
    * @return {Promise<UpdateChannelAPIResponse<ErmisChatGenerics>>} The server response
    */
-  async acceptInvite(options: InviteOptions<ErmisChatGenerics> = {}) {
+  async acceptInvite(action: string) {
     // const url = this.getClient().baseURL + `/invites/${this.type}/${this.id}/accept`;
     const channel_id = this.id;
     const connection_id = this.getClient().wsConnection?.connectionID;
 
     const url = this.getClient().baseURL + `/uss/v1/token_gate/join_channel/${this.type}`;
-    return this.getClient().post<APIResponse>(url, {}, { channel_id, connection_id });
+    return this.getClient().post<APIResponse>(url, {}, { channel_id, connection_id, action });
   }
 
   /**
@@ -1082,11 +1082,16 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       }
     }
 
-    const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', {
-      data: this._data,
+    const payload: any = {
       state: true,
       ...update_options,
-    });
+    };
+
+    if (this._data && Object.keys(this._data).length > 0) {
+      payload.data = this._data;
+    }
+
+    const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', payload);
 
     // update the channel id if it was missing
 
