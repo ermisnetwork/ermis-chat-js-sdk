@@ -147,7 +147,10 @@ export function retryInterval(numberOfFailures: number) {
 export function randomId() {
   return generateUUIDv4();
 }
-
+export function generateChannelId(projectId: string) {
+  const uuid = generateUUIDv4();
+  return `${projectId}:${uuid}`;
+}
 function hex(bytes: Uint8Array): string {
   let s = '';
   for (let i = 0; i < bytes.length; i++) {

@@ -259,7 +259,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   defaultWSTimeout: number;
 
   private eventSource: EventSourcePolyfill | null = null;
-
+  blockUsers: UserResponse<ErmisChatGenerics>[];
+  contactUsers: UserResponse<ErmisChatGenerics>[];
   // Chain
   chains?: ChainsResponse<ErmisChatGenerics>;
   private nextRequestAbortController: AbortController | null = null;
@@ -407,6 +408,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     this.logger = isFunction(inputOptions.logger) ? inputOptions.logger : () => null;
     this.recoverStateOnReconnect = this.options.recoverStateOnReconnect;
 
+    this.contactUsers = [];
+    this.blockUsers = [];
     this.chains = {
       chains: [],
       joined: [],
@@ -1664,6 +1667,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     return usersResponse;
   }
+  /**
+   * queryContacts - get contacts and block users list.
+   *  In normal case, state.users is updated by queryChannels. contact users or block users allways included in state.users.
+   *  But, if you want to call queryContacts to set to AppProvider, state users is not updated. So when you call queryContacts, you should update state.users.
+   */
+  //? Maybe we should find a better way to update state.users.
+
   async queryContacts(): Promise<ContactResult> {
     let project_id = this.projectId;
     const contactResponse = await this.post<ContactResponse>(this.baseURL + '/contacts/list', { project_id });
@@ -1685,7 +1695,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         default:
       }
     });
-
+    this.contactUsers = contact_users;
+    this.blockUsers = block_users;
     return {
       contact_users,
       block_users,
@@ -2137,7 +2148,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     // support channel("messaging", {options})
     if (channelIDOrCustom && typeof channelIDOrCustom === 'object') {
-      return this.getChannel(channelType, channelIDOrCustom);
+      return this.getChannelByMembers(channelType, channelIDOrCustom);
     }
 
     // // support channel("messaging", undefined, {options})

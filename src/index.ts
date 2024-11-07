@@ -14,4 +14,4 @@ export * from './types';
 export * from './segment';
 export * from './campaign';
 export * from './wallet_connect'
-export { isOwnUser, chatCodes, logChatPromiseExecution, formatMessage } from './utils';
+export { isOwnUser, chatCodes, logChatPromiseExecution, formatMessage, generateChannelId } from './utils';
