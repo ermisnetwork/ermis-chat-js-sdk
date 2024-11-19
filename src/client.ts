@@ -1868,7 +1868,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   }
 
   async startCall(payload: any) {
-    return this.post(this.baseURL + '/signal', payload);
+    const connection_id = this.wsConnection?.connectionID;
+    const data = {
+      ...payload,
+      connection_id,
+    };
+
+    return this.post(this.baseURL + '/signal', data);
   }
 
   /**
