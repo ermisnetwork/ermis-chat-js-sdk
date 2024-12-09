@@ -282,5 +282,6 @@ export class ErmisAuth {
       tags: ['ErmisAuth'],
     });
     this.disconnected = true;
+    this.address = '';
   }
 }
