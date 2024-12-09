@@ -489,10 +489,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   async acceptInvite(action: string) {
     // const url = this.getClient().baseURL + `/invites/${this.type}/${this.id}/accept`;
     const channel_id = this.id;
-    const connection_id = this.getClient().wsConnection?.connectionID;
 
     const url = this.getClient().baseURL + `/uss/v1/token_gate/join_channel/${this.type}`;
-    return this.getClient().post<APIResponse>(url, {}, { channel_id, connection_id, action });
+    return this.getClient().post<APIResponse>(url, {}, { channel_id, action });
   }
 
   /**
