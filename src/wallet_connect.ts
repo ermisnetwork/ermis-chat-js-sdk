@@ -17,7 +17,7 @@ import { isErrorResponse } from './errors';
 export class ErmisAuth {
   private static _instance?: unknown | ErmisAuth;
 
-  address: string;
+  address: string | any;
   disconnected: boolean;
   axiosInstance: AxiosInstance;
   options: ErmisChatOptions;
@@ -277,11 +277,18 @@ export class ErmisAuth {
     });
   }
 
+  public static logout() {
+    if (ErmisAuth._instance) {
+      (ErmisAuth._instance as ErmisAuth)._disconnect();
+      ErmisAuth._instance = undefined;
+    }
+  }
+
   _disconnect() {
     this.logger('info', 'ErmisAuth - Disconnected', {
       tags: ['ErmisAuth'],
     });
     this.disconnected = true;
-    this.address = '';
+    delete this.address;
   }
 }
