@@ -226,8 +226,8 @@ export function isOnline() {
     typeof navigator !== 'undefined'
       ? navigator
       : typeof window !== 'undefined' && window.navigator
-        ? window.navigator
-        : undefined;
+      ? window.navigator
+      : undefined;
 
   if (!nav) {
     console.warn('isOnline failed to access window.navigator and assume browser is online');
@@ -293,7 +293,8 @@ export function formatMessage<ErmisChatGenerics extends ExtendableGenerics = Def
      */
     __html: message.html,
     // parse the date..
-    pinned_at: message.pinned_at ? new Date(message.pinned_at) : null,
+    // pinned_at: message.pinned_at ? new Date(message.pinned_at) : null,
+    pinned_at: null,
     created_at: message.created_at ? new Date(message.created_at) : new Date(),
     updated_at: message.updated_at ? new Date(message.updated_at) : new Date(),
     status: message.status || 'received',
@@ -329,6 +330,10 @@ export function addToMessageList<ErmisChatGenerics extends ExtendableGenerics = 
     return messageArr.concat(message);
   } else if (messageArrayLength === 0) {
     return [...messageArr];
+  }
+
+  if (sortBy === 'pinned_at') {
+    return messageArr.concat(message);
   }
 
   const messageTime = (message[sortBy] as Date).getTime();

@@ -185,6 +185,31 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     });
   }
 
+  async forwardMessage(message: Message<ErmisChatGenerics>, channel: { type: string; channelID: string }) {
+    if (message.id === undefined) {
+      const id = randomId();
+      message = { ...message, id };
+    }
+
+    return await this.getClient().post<SendMessageAPIResponse<ErmisChatGenerics>>(
+      `${this.getClient().baseURL}/channels/${channel.type}/${channel.channelID}` + '/message',
+      {
+        message: { ...message },
+        // ...options,
+      },
+    );
+  }
+
+  async pinMessage(messageID: string) {
+    return await this.getClient().post(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageID}/pin`);
+  }
+
+  async unpinMessage(messageID: string) {
+    return await this.getClient().post(
+      this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageID}/unpin`,
+    );
+  }
+
   async editMessage(messageID: string, text: string) {
     return await this.getClient().post(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageID}`, {
       message: {
@@ -1300,46 +1325,107 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     );
   }
 
-  async getThumbBlobVideo(file: File) {
-    return new Promise((resolve, reject) => {
+  // async getThumbBlobVideo(file: File) {
+  //   return new Promise((resolve, reject) => {
+  //     const seekTo = 0.1;
+  //     // load the file to a video player
+  //     const videoPlayer = document.createElement('video');
+  //     videoPlayer.setAttribute('src', URL.createObjectURL(file));
+  //     videoPlayer.load();
+  //     videoPlayer.addEventListener('error', (ex) => {
+  //       // reject('error when loading video file', ex);
+  //     });
+  //     // load metadata of the video to get video duration and dimensions
+  //     videoPlayer.addEventListener('loadedmetadata', () => {
+  //       // seek to user defined timestamp (in seconds) if possible
+  //       if (videoPlayer.duration < seekTo) {
+  //         reject('video is too short.');
+  //         return;
+  //       }
+  //       // delay seeking or else 'seeked' event won't fire on Safari
+  //       setTimeout(() => {
+  //         videoPlayer.currentTime = seekTo;
+  //       }, 200);
+  //       // extract video thumbnail once seeking is complete
+  //       videoPlayer.addEventListener('seeked', () => {
+  //         console.log('video is now paused at %ss.', seekTo);
+  //         // define a canvas to have the same dimension as the video
+  //         const canvas = document.createElement('canvas');
+  //         canvas.width = videoPlayer.videoWidth;
+  //         canvas.height = videoPlayer.videoHeight;
+  //         // draw the video frame to canvas
+  //         const ctx: any = canvas.getContext('2d');
+  //         ctx.drawImage(videoPlayer, 0, 0, canvas.width, canvas.height);
+  //         // return the canvas image as a blob
+  //         ctx.canvas.toBlob(
+  //           (blob: any) => {
+  //             resolve(blob);
+  //           },
+  //           'image/jpeg',
+  //           0.75 /* quality */,
+  //         );
+  //       });
+  //     });
+  //   });
+  // }
+
+  async getThumbBlobVideo(file: File): Promise<Blob | null> {
+    return new Promise((resolve) => {
       const seekTo = 0.1;
-      // load the file to a video player
       const videoPlayer = document.createElement('video');
-      videoPlayer.setAttribute('src', URL.createObjectURL(file));
+      videoPlayer.src = URL.createObjectURL(file);
+      videoPlayer.crossOrigin = 'anonymous'; // Tránh lỗi CORS nếu cần
       videoPlayer.load();
-      videoPlayer.addEventListener('error', (ex) => {
-        // reject('error when loading video file', ex);
+
+      videoPlayer.addEventListener('error', () => {
+        console.error('Error when loading video file.');
+        resolve(null);
       });
-      // load metadata of the video to get video duration and dimensions
+
       videoPlayer.addEventListener('loadedmetadata', () => {
-        // seek to user defined timestamp (in seconds) if possible
         if (videoPlayer.duration < seekTo) {
-          reject('video is too short.');
+          console.error('Video is too short.');
+          resolve(null);
           return;
         }
-        // delay seeking or else 'seeked' event won't fire on Safari
+
         setTimeout(() => {
           videoPlayer.currentTime = seekTo;
         }, 200);
-        // extract video thumbnail once seeking is complete
-        videoPlayer.addEventListener('seeked', () => {
-          console.log('video is now paused at %ss.', seekTo);
-          // define a canvas to have the same dimension as the video
+      });
+
+      videoPlayer.addEventListener('seeked', () => {
+        try {
           const canvas = document.createElement('canvas');
           canvas.width = videoPlayer.videoWidth;
           canvas.height = videoPlayer.videoHeight;
-          // draw the video frame to canvas
-          const ctx: any = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) {
+            console.error('Failed to create canvas context.');
+            resolve(null);
+            return;
+          }
+
           ctx.drawImage(videoPlayer, 0, 0, canvas.width, canvas.height);
-          // return the canvas image as a blob
+
           ctx.canvas.toBlob(
-            (blob: any) => {
+            (blob) => {
+              if (!blob) {
+                console.error('Failed to generate thumbnail.');
+                resolve(null);
+                return;
+              }
               resolve(blob);
+              URL.revokeObjectURL(videoPlayer.src); // Giải phóng bộ nhớ
             },
             'image/jpeg',
-            0.75 /* quality */,
+            0.75,
           );
-        });
+        } catch (error) {
+          console.error('Error while extracting thumbnail:', error);
+          resolve(null);
+        }
       });
     });
   }
@@ -1481,7 +1567,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
           channelState.removeQuotedMessageReferences(event.message);
 
-          if (event.message.pinned) {
+          // if (event.message.pinned) {
+          //   channelState.removePinnedMessage(event.message);
+          // }
+
+          if ([...channelState.pinnedMessages].some((msg) => msg.id === event.message?.id)) {
             channelState.removePinnedMessage(event.message);
           }
 
@@ -1502,9 +1592,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           if (this.state.isUpToDate || isThreadMessage) {
             channelState.addMessageSorted(event.message, ownMessage);
           }
-          if (event.message.pinned) {
-            channelState.addPinnedMessage(event.message);
-          }
+          // if (event.message.pinned) {
+          //   channelState.addPinnedMessage(event.message);
+          // }
 
           // do not increase the unread count - the back-end does not increase the count neither in the following cases:
           // 1. the message is mine
@@ -1532,15 +1622,25 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         }
         break;
       case 'message.updated':
-      case 'message.undeleted':
+      // case 'message.undeleted':
+      //   if (event.message) {
+      //     this._extendEventWithOwnReactions(event);
+      //     channelState.addMessageSorted(event.message, false, false);
+      //     if (event.message.pinned) {
+      //       channelState.addPinnedMessage(event.message);
+      //     } else {
+      //       channelState.removePinnedMessage(event.message);
+      //     }
+      //   }
+      //   break;
+      case 'message.pinned':
         if (event.message) {
-          this._extendEventWithOwnReactions(event);
-          channelState.addMessageSorted(event.message, false, false);
-          if (event.message.pinned) {
-            channelState.addPinnedMessage(event.message);
-          } else {
-            channelState.removePinnedMessage(event.message);
-          }
+          channelState.addPinnedMessage(event.message);
+        }
+        break;
+      case 'message.unpinned':
+        if (event.message) {
+          channelState.removePinnedMessage(event.message);
         }
         break;
       case 'channel.truncated':

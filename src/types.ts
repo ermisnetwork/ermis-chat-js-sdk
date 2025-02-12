@@ -2432,6 +2432,8 @@ export type Message<ErmisChatGenerics extends ExtendableGenerics = DefaultGeneri
 > & {
   mentioned_all?: boolean;
   mentioned_users?: string[];
+  cid?: string;
+  forward_cid?: string;
 };
 
 export type MessageBase<
