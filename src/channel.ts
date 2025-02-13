@@ -1857,7 +1857,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     }
     const { messageSet } = this.state.addMessagesSorted(messages, false, true, true, messageSetToAddToIfDoesNotExist);
 
-    if (!this.state.pinnedMessages) {
+    if (this.state.pinnedMessages) {
       this.state.pinnedMessages = [];
     }
     this.state.addPinnedMessages(state.pinned_messages || []);
@@ -1869,14 +1869,14 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     }
     // NOTE: we don't send the watchers with the channel data anymore
     // // convert the arrays into objects for easier syncing...
-    // if (state.watchers) {
-    //   for (const watcher of state.watchers) {
-    //     if (watcher) {
-    //       clientState.updateUserReference(watcher, this.cid);
-    //       this.state.watchers[watcher.id] = watcher;
-    //     }
-    //   }
-    // }
+    if (state.watchers) {
+      for (const watcher of state.watchers) {
+        if (watcher) {
+          clientState.updateUserReference(watcher, this.cid);
+          this.state.watchers[watcher.id] = watcher;
+        }
+      }
+    }
 
     // initialize read state to last message or current time if the channel is empty
     // if the user is a member, this value will be overwritten later on otherwise this ensures
