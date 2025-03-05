@@ -674,12 +674,12 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * await channel.mute({user_id: userId});
    *
    */
-  async mute(opts: { expiration?: number; user_id?: string } = {}) {
-    return await this.getClient().post<MuteChannelAPIResponse<ErmisChatGenerics>>(
-      this.getClient().baseURL + '/moderation/mute/channel',
-      { channel_cid: this.cid, ...opts },
-    );
-  }
+  // async mute(opts: { expiration?: number; user_id?: string } = {}) {
+  //   return await this.getClient().post<MuteChannelAPIResponse<ErmisChatGenerics>>(
+  //     this.getClient().baseURL + '/moderation/mute/channel',
+  //     { channel_cid: this.cid, ...opts },
+  //   );
+  // }
 
   /**
    * unmute - mutes the current channel
@@ -689,11 +689,25 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * example server side:
    * await channel.unmute({user_id: userId});
    */
-  async unmute(opts: { user_id?: string } = {}) {
-    return await this.getClient().post<APIResponse>(this.getClient().baseURL + '/moderation/unmute/channel', {
-      channel_cid: this.cid,
-      ...opts,
-    });
+  // async unmute(opts: { user_id?: string } = {}) {
+  //   return await this.getClient().post<APIResponse>(this.getClient().baseURL + '/moderation/unmute/channel', {
+  //     channel_cid: this.cid,
+  //     ...opts,
+  //   });
+  // }
+
+  async muteNotification(duration: number | null) {
+    return await this.getClient().post<AttachmentResponse<ErmisChatGenerics>>(
+      this.getClient().baseURL + `/channels/${this.type}/${this.id}/muted`,
+      { mute: true, duration },
+    );
+  }
+
+  async unMuteNotification() {
+    return await this.getClient().post<AttachmentResponse<ErmisChatGenerics>>(
+      this.getClient().baseURL + `/channels/${this.type}/${this.id}/muted`,
+      { mute: false },
+    );
   }
 
   /**
