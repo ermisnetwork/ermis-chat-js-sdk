@@ -2430,6 +2430,7 @@ export type Logger = (logLevel: LogLevel, message: string, extraData?: Record<st
 export type Message<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = Partial<
   MessageBase<ErmisChatGenerics>
 > & {
+  id?: string;
   mentioned_all?: boolean;
   mentioned_users?: string[];
   cid?: string;

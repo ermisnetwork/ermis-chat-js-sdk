@@ -174,7 +174,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {Promise<SendMessageAPIResponse<ErmisChatGenerics>>} The Server Response
    */
   async sendMessage(message: Message<ErmisChatGenerics>, options?: SendMessageOptions) {
-    if (message.id === undefined) {
+    if (!message.hasOwnProperty('id') || !message?.id) {
       const id = randomId();
       message = { ...message, id };
     }
