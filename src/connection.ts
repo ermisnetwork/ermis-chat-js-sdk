@@ -187,8 +187,9 @@ export class StableWSConnection<ErmisChatGenerics extends ExtendableGenerics = D
     const qs = encodeURIComponent(this.client._buildWSPayload(this.requestID));
     const token = this.client.tokenManager.getToken();
 
-    let rawURL = `${this.client.wsBaseURL}/connect?json=${qs}&api_key=${this.client.key
-      }&authorization=${token}&stream-auth-type=${this.client.getAuthType()}&X-Stream-Client=${this.client.getUserAgent()}`;
+    let rawURL = `${this.client.wsBaseURL}/connect?json=${qs}&api_key=${
+      this.client.key
+    }&authorization=${token}&stream-auth-type=${this.client.getAuthType()}&X-Stream-Client=${this.client.getUserAgent()}`;
     rawURL = encodeURI(rawURL);
     return rawURL;
   };
@@ -302,7 +303,7 @@ export class StableWSConnection<ErmisChatGenerics extends ExtendableGenerics = D
         this.client.insightMetrics.wsConsecutiveFailures++;
         this.client.insightMetrics.wsTotalFailures++;
 
-        const insights = buildWsFatalInsight((this as unknown) as StableWSConnection, convertErrorToJson(err as Error));
+        const insights = buildWsFatalInsight(this as unknown as StableWSConnection, convertErrorToJson(err as Error));
       }
       throw err;
     }
@@ -508,7 +509,7 @@ export class StableWSConnection<ErmisChatGenerics extends ExtendableGenerics = D
     setTimeout(() => {
       if (this.isHealthy) return;
       this.client.dispatchEvent({ type: 'connection.changed', online: this.isHealthy });
-    }, 5000);
+    }, 1000);
   };
 
   /**

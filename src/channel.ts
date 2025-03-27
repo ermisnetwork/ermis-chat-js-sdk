@@ -578,6 +578,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   async queryAttachmentMessages() {
     return await this.getClient().post<AttachmentResponse<ErmisChatGenerics>>(
       this.getClient().baseURL + `/channels/${this.type}/${this.id}/attachment`,
+      {
+        attachment_types: ['image', 'video', 'file', 'voiceRecording', 'linkPreview'],
+      },
     );
   }
 
