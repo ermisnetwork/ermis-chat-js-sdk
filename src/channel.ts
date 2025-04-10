@@ -1091,7 +1091,12 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       state: false,
       presence: false,
     };
-    return await this.query(defaultOptions, 'latest');
+
+    if (this.type === 'messaging') {
+      return await this.createDirectChannel(defaultOptions, 'latest');
+    } else {
+      return await this.query(defaultOptions, 'latest');
+    }
   };
 
   /**
@@ -1173,6 +1178,59 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       this.getClient().dispatchEvent({
         type: 'capabilities.changed',
         cid: this.cid,
+        own_capabilities: state.channel.own_capabilities,
+      });
+    }
+
+    this.getClient().dispatchEvent({
+      type: 'channels.queried',
+      queriedChannels: {
+        channels: [state],
+        isLatestMessageSet: messageSet.isLatest,
+      },
+    });
+
+    return state;
+  }
+
+  async createDirectChannel(
+    options: ChannelQueryOptions<ErmisChatGenerics>,
+    messageSetToAddToIfDoesNotExist: MessageSetType = 'current',
+  ) {
+    // Make sure we wait for the connect promise if there is a pending one
+    await this.getClient().wsPromise;
+
+    let project_id = this._client.projectId;
+    let update_options = { ...options, project_id };
+
+    let queryURL = `${this.getClient().baseURL}/channels/${this.type}`;
+
+    const payload: any = {
+      state: true,
+      ...update_options,
+    };
+
+    if (this._data && Object.keys(this._data).length > 0) {
+      payload.data = this._data;
+    }
+
+    const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', payload);
+
+    this.getClient()._addChannelConfig(state.channel);
+
+    // add any messages to our channel state
+    const { messageSet } = this._initializeState(state, messageSetToAddToIfDoesNotExist);
+
+    const areCapabilitiesChanged =
+      [...(state.channel.own_capabilities || [])].sort().join() !==
+      [...(Array.isArray(this.data?.own_capabilities) ? (this.data?.own_capabilities as string[]) : [])].sort().join();
+    this.data = state.channel;
+    this.offlineMode = false;
+
+    if (areCapabilitiesChanged) {
+      this.getClient().dispatchEvent({
+        type: 'capabilities.changed',
+        cid: state.channel.cid,
         own_capabilities: state.channel.own_capabilities,
       });
     }
