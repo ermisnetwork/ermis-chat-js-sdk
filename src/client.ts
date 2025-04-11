@@ -1469,8 +1469,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     // The StableWSConnection handles all the reconnection logic.
     if (this.options.wsConnection && this.node) {
       // Intentionally avoiding adding ts generics on wsConnection in options since its only useful for unit test purpose.
-      ((this.options.wsConnection as unknown) as StableWSConnection<ErmisChatGenerics>).setClient(this);
-      this.wsConnection = (this.options.wsConnection as unknown) as StableWSConnection<ErmisChatGenerics>;
+      (this.options.wsConnection as unknown as StableWSConnection<ErmisChatGenerics>).setClient(this);
+      this.wsConnection = this.options.wsConnection as unknown as StableWSConnection<ErmisChatGenerics>;
     } else {
       this.wsConnection = new StableWSConnection<ErmisChatGenerics>({
         client: this,
@@ -1641,7 +1641,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     let project_id = this.projectId;
 
     const usersRepsonse = await this.post<UsersResponse>(
-      this.baseURL + '/uss/v1/users/batch',
+      this.baseURL + '/uss/v1/users/batch?page=1&page_size=10000',
       { users, project_id },
       { page, page_size },
     );
@@ -2835,13 +2835,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
     return this.partialUpdateMessage(
       messageId,
-      ({
+      {
         set: {
           pinned: true,
           pin_expires: this._normalizeExpiration(timeoutOrExpirationDate),
           pinned_at: this._normalizeExpiration(pinnedAt),
         },
-      } as unknown) as PartialMessageUpdate<ErmisChatGenerics>,
+      } as unknown as PartialMessageUpdate<ErmisChatGenerics>,
       pinnedBy,
     );
   }
@@ -2858,9 +2858,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
     return this.partialUpdateMessage(
       messageId,
-      ({
+      {
         set: { pinned: false },
-      } as unknown) as PartialMessageUpdate<ErmisChatGenerics>,
+      } as unknown as PartialMessageUpdate<ErmisChatGenerics>,
       userId,
     );
   }
@@ -2922,7 +2922,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
      * SDK missed this conversion.
      */
     if (Array.isArray(clonedMessage.mentioned_users) && !isString(clonedMessage.mentioned_users[0])) {
-      clonedMessage.mentioned_users = clonedMessage.mentioned_users.map((mu) => ((mu as unknown) as UserResponse).id);
+      clonedMessage.mentioned_users = clonedMessage.mentioned_users.map((mu) => (mu as unknown as UserResponse).id);
     }
 
     return await this.post<UpdateMessageAPIResponse<ErmisChatGenerics>>(this.baseURL + `/messages/${message.id}`, {
@@ -3139,8 +3139,11 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         'x-client-request-id': randomId(),
       };
     }
-    const { params: axiosRequestConfigParams, headers: axiosRequestConfigHeaders, ...axiosRequestConfigRest } =
-      this.options.axiosRequestConfig || {};
+    const {
+      params: axiosRequestConfigParams,
+      headers: axiosRequestConfigHeaders,
+      ...axiosRequestConfigRest
+    } = this.options.axiosRequestConfig || {};
 
     let user_service_params = {
       ...options.params,
