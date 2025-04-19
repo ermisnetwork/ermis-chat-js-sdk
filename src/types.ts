@@ -3191,3 +3191,9 @@ export type AttachmentResponse<ErmisChatGenerics extends ExtendableGenerics = De
   attachments: Attachment<ErmisChatGenerics>[];
 };
 export class ExtendAxiosError<T = any> extends AxiosError<T> {}
+export type SignalData = {
+  cid?: string;
+  is_video?: boolean;
+  action?: string;
+  signal?: Object;
+};
