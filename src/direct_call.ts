@@ -15,7 +15,6 @@ export enum CallAction {
 }
 
 export enum CallStatus {
-  // IDLE = 'idle',
   RINGING = 'ringing',
   ENDED = 'ended',
   CONNECTED = 'connected',
@@ -50,11 +49,11 @@ type UserCallInfo = {
 
 export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> {
   _client: ErmisChat<ErmisChatGenerics>;
-  cid: string;
-  callType: string;
   sessionID: string;
-  userID: string | undefined;
-  callStatus = '';
+  cid?: string;
+  callType?: string;
+  userID?: string | undefined;
+  callStatus? = '';
   peer?: SimplePeerInstance | null = null;
   localStream?: MediaStream | null = null;
   remoteStream?: MediaStream | null = null;
@@ -66,6 +65,9 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   onConnectionMessageChange?: (message: string | null) => void;
   onCallStatus?: (status: string | null) => void;
   onDataChannelMessage?: (data: any) => void;
+  onUpgradeCall?: (upgraderInfo: UserCallInfo) => void;
+  onScreenShareChange?: (isSharing: boolean) => void;
+  onError?: (error: string) => void;
 
   private missCallTimeout: NodeJS.Timeout | null = null;
   private healthCallInterval: NodeJS.Timeout | null = null;
@@ -75,6 +77,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   private signalHandler: any;
   private connectionChangedHandler: any;
   private messageUpdatedHandler: any;
+  private isOffline: boolean = false;
 
   constructor(client: ErmisChat<ErmisChatGenerics>, sessionID: string) {
     this._client = client;
@@ -91,13 +94,30 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   async _sendSignal(payload: SignalData) {
-    return await this.getClient().post(this.getClient().baseURL + '/signal', {
-      ...payload,
-      cid: this.cid || payload.cid,
-      is_video: this.callType === 'video' || payload.is_video,
-      ios: false,
-      session_id: this.sessionID,
-    });
+    try {
+      return await this.getClient().post(this.getClient().baseURL + '/signal', {
+        ...payload,
+        cid: this.cid || payload.cid,
+        is_video: this.callType === 'video' || payload.is_video,
+        ios: false,
+        session_id: this.sessionID,
+      });
+    } catch (error: any) {
+      if (typeof this.onError === 'function') {
+        const action = payload.action;
+        if (error.code === 'ERR_NETWORK') {
+          if (action === CallAction.CREATE_CALL) {
+            this.onError('Unable to make the call. Please check your network connection');
+          }
+        } else {
+          if (error.response.data.ermis_code === 20) {
+            this.onError('Recipient was busy');
+          } else {
+            this.onError('Call Failed');
+          }
+        }
+      }
+    }
   }
 
   async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
@@ -125,16 +145,16 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   private setUserInfo(cid: string | undefined, eventUserId: string | undefined) {
     if (!cid || !eventUserId) return;
 
-    // Lấy userId của caller và receiver từ activeChannels
+    // Get caller and receiver userId from activeChannels
     const channel = cid ? this.getClient().activeChannels[cid] : undefined;
     const members = channel?.state?.members || {};
     const memberIds = Object.keys(members);
 
-    // callerId là eventUserId, receiverId là user còn lại trong channel
+    // callerId is eventUserId, receiverId is the other user in the channel
     const callerId = eventUserId || '';
     const receiverId = memberIds.find((id) => id !== callerId) || '';
 
-    // Lấy thông tin từ client.state.users
+    // Get user info from client.state.users
     const callerUser = this.getClient().state.users[callerId];
     const receiverUser = this.getClient().state.users[receiverId];
 
@@ -177,7 +197,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         signal = { type: 'ice', sdp };
       }
 
-      // Gửi signal qua server
+      // Send signal to server
       await this.signalCall(signal);
     });
 
@@ -195,13 +215,13 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       await this.connectCall();
       this.setCallStatus(CallStatus.CONNECTED);
 
-      // Xóa missCall timeout khi đã kết nối
+      // Clear missCall timeout when connected
       if (this.missCallTimeout) {
         clearTimeout(this.missCallTimeout);
         this.missCallTimeout = null;
       }
 
-      // Thiết lập health_call interval qua WebRTC mỗi 1s
+      // Set up health_call interval via WebRTC every 1s
       if (this.healthCallInterval) clearInterval(this.healthCallInterval);
       this.healthCallInterval = setInterval(() => {
         if (this.peer) {
@@ -209,7 +229,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         }
       }, 1000);
 
-      // Thiết lập healthCall interval qua server mỗi 10s
+      // Set up healthCall interval via server every 10s
       if (this.healthCallServerInterval) clearInterval(this.healthCallServerInterval);
       this.healthCallServerInterval = setInterval(() => {
         this.healthCall();
@@ -228,22 +248,28 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         const remoteAudioEnable = message.body.audio_enable;
       }
 
-      // Xử lý health_call
+      // Handle health_call
       if (message.type === 'health_call') {
-        // Reset timeout mỗi khi nhận được health_call
+        // Reset timeout whenever health_call is received
         if (this.healthCallTimeout) clearTimeout(this.healthCallTimeout);
         this.healthCallTimeout = setTimeout(async () => {
-          // Nếu sau 30s không nhận được health_call thì kết thúc cuộc gọi
+          // If no health_call is received after 30s, end the call
           await this.endCall();
         }, 30000);
 
-        // Reset cảnh báo mất kết nối đối phương
+        // Reset remote connection lost warning
         if (this.healthCallWarningTimeout) clearTimeout(this.healthCallWarningTimeout);
         this.setConnectionMessage(null);
 
-        // Nếu không nhận được health_call sau 3s thì cảnh báo đối phương mất mạng
+        // If no health_call is received after 3s, show remote peer connection unstable warning
         this.healthCallWarningTimeout = setTimeout(() => {
-          this.setConnectionMessage(`Remote user network connection is unstable`);
+          if (!this.isOffline) {
+            this.setConnectionMessage(
+              `${
+                this.userID === this.callerInfo?.id ? this.receiverInfo?.name : this.callerInfo?.name
+              } network connection is unstable`,
+            );
+          }
         }, 3000);
       }
     });
@@ -257,6 +283,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
     this.peer.on('error', (err) => {
       this.setCallStatus(CallStatus.ERROR);
+      this.cleanupCall();
       console.error('SimplePeer error:', err);
     });
 
@@ -295,26 +322,25 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
       switch (action) {
         case CallAction.CREATE_CALL:
+          await this.startLocalStream({ audio: true, video: true });
           this.setUserInfo(cid, eventUserId);
           this.setCallStatus(CallStatus.RINGING);
           this.callType = is_video ? 'video' : 'audio';
           this.cid = cid || '';
-          await this.startLocalStream({ audio: true, video: true });
           if (typeof this.onCallEvent === 'function') {
             if (eventUserId !== this.userID) {
-              // Cuộc gọi đến
+              // Incoming call
               this.onCallEvent({
                 type: 'incoming',
-                // callerId: eventUserId || '',
                 callType: is_video ? 'video' : 'audio',
                 cid: cid || '',
                 callerInfo: this.callerInfo,
                 receiverInfo: this.receiverInfo,
               });
             } else {
+              // Outgoing call
               this.onCallEvent({
                 type: 'outgoing',
-                // callerId: eventUserId || '',
                 callType: is_video ? 'video' : 'audio',
                 cid: cid || '',
                 callerInfo: this.callerInfo,
@@ -322,7 +348,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
               });
             }
           }
-          // Thiết lập timeout missCall nếu sau 60s không có kết nối
+          // Set missCall timeout if no connection after 60s
           if (this.missCallTimeout) clearTimeout(this.missCallTimeout);
           this.missCallTimeout = setTimeout(async () => {
             await this.missCall();
@@ -331,7 +357,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
         case CallAction.ACCEPT_CALL:
           if (eventUserId !== this.userID) {
-            // Caller: khi receiver accept, tạo offer gửi cho receiver
+            // Caller: when receiver accepts, create offer and send to receiver
             await this.makeOffer();
           } else {
             if (eventSessionId !== this.sessionID) {
@@ -347,13 +373,13 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           if (typeof signal === 'object' && signal !== null && 'type' in signal) {
             const signalObj = signal as { type: string; [key: string]: any };
             if (signalObj.type === 'offer') {
-              // Receiver: nhận offer, tạo peer, gửi answer và ice cho caller
+              // Receiver: receive offer, create peer, send answer and ice to caller
               await this.handleOffer(signalObj as SimplePeerSignalData);
             } else if (signalObj.type === 'answer') {
-              // Caller: nhận answer, thiết lập kết nối
+              // Caller: receive answer, establish connection
               await this.handleAnswer(signalObj as SimplePeerSignalData);
             } else if (signalObj.type === 'ice' && 'sdp' in signalObj) {
-              // Cả 2 bên: nhận ICE candidate
+              // Both sides: receive ICE candidate
               const sdp = signalObj.sdp;
               const splitSdp = sdp.split('$');
 
@@ -380,19 +406,60 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     };
     this.connectionChangedHandler = (event: Event<ErmisChatGenerics>) => {
       const online = event.online;
+      this.isOffline = !online;
       if (!online) {
         this.setConnectionMessage('Your network connection is unstable');
+
+        // Clear health_call intervals when offline
+        if (this.healthCallInterval) {
+          clearInterval(this.healthCallInterval);
+          this.healthCallInterval = null;
+        }
+        if (this.healthCallServerInterval) {
+          clearInterval(this.healthCallServerInterval);
+          this.healthCallServerInterval = null;
+        }
       } else {
         this.setConnectionMessage(null);
+
+        // When back online, if CONNECTED, set up health_call intervals again
+        if (this.callStatus === CallStatus.CONNECTED && this.peer) {
+          if (!this.healthCallInterval) {
+            this.healthCallInterval = setInterval(() => {
+              if (this.peer) {
+                this.peer.send(JSON.stringify({ type: 'health_call' }));
+              }
+            }, 1000);
+          }
+          if (!this.healthCallServerInterval) {
+            this.healthCallServerInterval = setInterval(() => {
+              this.healthCall();
+            }, 10000);
+          }
+        }
       }
     };
     this.messageUpdatedHandler = (event: Event<ErmisChatGenerics>) => {
       if (this.callStatus === CallStatus.CONNECTED && event.cid === this.cid) {
-        if (event.user?.id === this.userID) {
+        const upgradeUserId = event.user?.id;
+
+        let upgraderInfo: UserCallInfo | undefined;
+
+        if (upgradeUserId === this.callerInfo?.id) {
+          upgraderInfo = this.callerInfo;
+        } else if (upgradeUserId === this.receiverInfo?.id) {
+          upgraderInfo = this.receiverInfo;
+        }
+
+        if (upgraderInfo && typeof this.onUpgradeCall === 'function') {
+          this.onUpgradeCall(upgraderInfo);
+        }
+
+        if (upgradeUserId === this.userID) {
           const jsonData = {
             type: 'transciver_state',
             body: {
-              audio_enable: true,
+              audio_enable: this.localStream?.getAudioTracks().some((track) => track.enabled),
               video_enable: true,
             },
           };
@@ -408,37 +475,37 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   private cleanupCall() {
-    // Dọn dẹp peer
+    // Clean up peer
     if (this.peer) {
       this.peer.destroy();
       this.peer = null;
     }
-    // Dừng local stream nếu có
+    // Stop local stream if exists
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
     }
-    // Dọn dẹp missCall timeout
+    // Clear missCall timeout
     if (this.missCallTimeout) {
       clearTimeout(this.missCallTimeout);
       this.missCallTimeout = null;
     }
-    // Dọn dẹp healthCall interval qua WebRTC
+    // Clear healthCall interval via WebRTC
     if (this.healthCallInterval) {
       clearInterval(this.healthCallInterval);
       this.healthCallInterval = null;
     }
-    // Dọn dẹp healthCall interval qua server
+    // Clear healthCall interval via server
     if (this.healthCallServerInterval) {
       clearInterval(this.healthCallServerInterval);
       this.healthCallServerInterval = null;
     }
-    // Dọn dẹp healthCall timeout
+    // Clear healthCall timeout
     if (this.healthCallTimeout) {
       clearTimeout(this.healthCallTimeout);
       this.healthCallTimeout = null;
     }
-    // Dọn dẹp healthCall warning timeout
+    // Clear healthCall warning timeout
     if (this.healthCallWarningTimeout) {
       clearTimeout(this.healthCallWarningTimeout);
       this.healthCallWarningTimeout = null;
@@ -447,9 +514,9 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   destroy() {
-    if (this.signalHandler) this._client.off('signal', this.signalHandler);
-    if (this.connectionChangedHandler) this._client.off('connection.changed', this.connectionChangedHandler);
-    if (this.messageUpdatedHandler) this._client.off('message.updated', this.messageUpdatedHandler);
+    // if (this.signalHandler) this._client.off('signal', this.signalHandler);
+    // if (this.connectionChangedHandler) this._client.off('connection.changed', this.connectionChangedHandler);
+    // if (this.messageUpdatedHandler) this._client.off('message.updated', this.messageUpdatedHandler);
     this.cleanupCall();
   }
 
@@ -499,20 +566,19 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const screenTrack = screenStream.getVideoTracks()[0];
 
-    // Thay thế video track trong localStream
+    // Replace video track in localStream
     if (this.localStream) {
-      // Dừng track cũ
+      // Stop old track
       this.localStream.getVideoTracks().forEach((track) => track.stop());
-      // Thêm track mới vào localStream
+      // Add new track to localStream
       this.localStream.removeTrack(this.localStream.getVideoTracks()[0]);
       this.localStream.addTrack(screenTrack);
     } else {
-      // Nếu chưa có localStream, tạo mới
+      // If no localStream, create new one
       this.localStream = screenStream;
     }
 
-    // Thay thế video track trong peer connection
-
+    // Replace video track in peer connection
     if (this.peer) {
       const sender = (this.peer as any)._pc.getSenders().find((s: RTCRtpSender) => s.track && s.track.kind === 'video');
       if (sender) {
@@ -520,34 +586,39 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       }
     }
 
-    // Khi dừng chia sẻ màn hình, tự động revert về camera
+    // When screen sharing stops, automatically revert to camera
     screenTrack.onended = () => {
       this.stopScreenShare();
     };
 
-    // Gọi callback nếu cần cập nhật UI
+    // Call callback if UI needs to be updated
     if (this.onLocalStream) {
       this.onLocalStream(this.localStream);
+    }
+
+    // Call callback when starting screen share
+    if (typeof this.onScreenShareChange === 'function') {
+      this.onScreenShareChange(true);
     }
   }
 
   async stopScreenShare() {
-    // Lấy lại camera stream
+    // Get camera stream again
     const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     const cameraTrack = cameraStream.getVideoTracks()[0];
 
-    // Thay thế video track trong localStream
+    // Replace video track in localStream
     if (this.localStream) {
-      // Dừng track cũ (screen)
+      // Stop old (screen) track
       this.localStream.getVideoTracks().forEach((track) => track.stop());
-      // Thay thế bằng camera track
+      // Replace with camera track
       this.localStream.removeTrack(this.localStream.getVideoTracks()[0]);
       this.localStream.addTrack(cameraTrack);
     } else {
       this.localStream = cameraStream;
     }
 
-    // Thay thế video track trong peer connection
+    // Replace video track in peer connection
     if (this.peer) {
       const sender = (this.peer as any)._pc.getSenders().find((s: RTCRtpSender) => s.track && s.track.kind === 'video');
       if (sender) {
@@ -555,9 +626,14 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       }
     }
 
-    // Gọi callback nếu cần cập nhật UI
+    // Call callback if UI needs to be updated
     if (this.onLocalStream) {
       this.onLocalStream(this.localStream);
+    }
+
+    // Call callback when stopping screen share
+    if (typeof this.onScreenShareChange === 'function') {
+      this.onScreenShareChange(false);
     }
   }
 
