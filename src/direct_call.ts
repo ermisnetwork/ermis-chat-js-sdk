@@ -69,11 +69,11 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   onScreenShareChange?: (isSharing: boolean) => void;
   onError?: (error: string) => void;
 
-  private missCallTimeout: NodeJS.Timeout | null = null;
-  private healthCallInterval: NodeJS.Timeout | null = null;
-  private healthCallServerInterval: NodeJS.Timeout | null = null;
-  private healthCallTimeout: NodeJS.Timeout | null = null;
-  private healthCallWarningTimeout: NodeJS.Timeout | null = null;
+  private missCallTimeout: ReturnType<typeof setTimeout> | null = null;
+  private healthCallInterval: ReturnType<typeof setInterval> | null = null;
+  private healthCallServerInterval: ReturnType<typeof setInterval> | null = null;
+  private healthCallTimeout: ReturnType<typeof setTimeout> | null = null;
+  private healthCallWarningTimeout: ReturnType<typeof setTimeout> | null = null;
   private signalHandler: any;
   private connectionChangedHandler: any;
   private messageUpdatedHandler: any;

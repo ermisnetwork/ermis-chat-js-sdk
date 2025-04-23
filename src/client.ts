@@ -8,7 +8,7 @@ import WebSocket from 'isomorphic-ws';
 import { Channel } from './channel';
 import { ClientState } from './client_state';
 import { StableWSConnection } from './connection';
-import { CheckSignature, DevToken, JWTUserToken } from './signing';
+import { DevToken, JWTUserToken } from './signing';
 import { TokenManager } from './token_manager';
 import { WSConnectionFallback } from './connection_fallback';
 import { Campaign } from './campaign';
@@ -1469,8 +1469,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     // The StableWSConnection handles all the reconnection logic.
     if (this.options.wsConnection && this.node) {
       // Intentionally avoiding adding ts generics on wsConnection in options since its only useful for unit test purpose.
-      (this.options.wsConnection as unknown as StableWSConnection<ErmisChatGenerics>).setClient(this);
-      this.wsConnection = this.options.wsConnection as unknown as StableWSConnection<ErmisChatGenerics>;
+      ((this.options.wsConnection as unknown) as StableWSConnection<ErmisChatGenerics>).setClient(this);
+      this.wsConnection = (this.options.wsConnection as unknown) as StableWSConnection<ErmisChatGenerics>;
     } else {
       this.wsConnection = new StableWSConnection<ErmisChatGenerics>({
         client: this,
@@ -2835,13 +2835,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
     return this.partialUpdateMessage(
       messageId,
-      {
+      ({
         set: {
           pinned: true,
           pin_expires: this._normalizeExpiration(timeoutOrExpirationDate),
           pinned_at: this._normalizeExpiration(pinnedAt),
         },
-      } as unknown as PartialMessageUpdate<ErmisChatGenerics>,
+      } as unknown) as PartialMessageUpdate<ErmisChatGenerics>,
       pinnedBy,
     );
   }
@@ -2858,9 +2858,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
     return this.partialUpdateMessage(
       messageId,
-      {
+      ({
         set: { pinned: false },
-      } as unknown as PartialMessageUpdate<ErmisChatGenerics>,
+      } as unknown) as PartialMessageUpdate<ErmisChatGenerics>,
       userId,
     );
   }
@@ -2922,7 +2922,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
      * SDK missed this conversion.
      */
     if (Array.isArray(clonedMessage.mentioned_users) && !isString(clonedMessage.mentioned_users[0])) {
-      clonedMessage.mentioned_users = clonedMessage.mentioned_users.map((mu) => (mu as unknown as UserResponse).id);
+      clonedMessage.mentioned_users = clonedMessage.mentioned_users.map((mu) => ((mu as unknown) as UserResponse).id);
     }
 
     return await this.post<UpdateMessageAPIResponse<ErmisChatGenerics>>(this.baseURL + `/messages/${message.id}`, {
@@ -3139,11 +3139,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         'x-client-request-id': randomId(),
       };
     }
-    const {
-      params: axiosRequestConfigParams,
-      headers: axiosRequestConfigHeaders,
-      ...axiosRequestConfigRest
-    } = this.options.axiosRequestConfig || {};
+    const { params: axiosRequestConfigParams, headers: axiosRequestConfigHeaders, ...axiosRequestConfigRest } =
+      this.options.axiosRequestConfig || {};
 
     let user_service_params = {
       ...options.params,
@@ -3204,9 +3201,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    * @param {string} signature from HTTP header
    * @returns {boolean}
    */
-  verifyWebhook(requestBody: string | Buffer, xSignature: string) {
-    return !!this.secret && CheckSignature(requestBody, this.secret, xSignature);
-  }
+  // verifyWebhook(requestBody: string | Buffer, xSignature: string) {
+  //   return !!this.secret && CheckSignature(requestBody, this.secret, xSignature);
+  // }
 
   /** getPermission - gets the definition for a permission
    *

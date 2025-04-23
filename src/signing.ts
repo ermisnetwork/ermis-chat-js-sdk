@@ -1,5 +1,5 @@
 import jwt, { Secret, SignOptions } from 'jsonwebtoken';
-import crypto from 'crypto';
+// import crypto from 'crypto';
 import { encodeBase64, decodeBase64 } from './base64';
 import { UR } from './types';
 
@@ -79,13 +79,13 @@ export function DevToken(userId: string) {
  * @param {string} signature the signature to validate
  * @return {boolean}
  */
-export function CheckSignature(body: string | Buffer, secret: string, signature: string) {
-  const key = Buffer.from(secret, 'utf8');
-  const hash = crypto.createHmac('sha256', key).update(body).digest('hex');
+// export function CheckSignature(body: string | Buffer, secret: string, signature: string) {
+//   const key = Buffer.from(secret, 'utf8');
+//   const hash = crypto.createHmac('sha256', key).update(body).digest('hex');
 
-  try {
-    return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature));
-  } catch {
-    return false;
-  }
-}
+//   try {
+//     return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature));
+//   } catch {
+//     return false;
+//   }
+// }
