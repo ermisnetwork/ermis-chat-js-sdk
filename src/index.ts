@@ -14,6 +14,6 @@ export * from './types';
 export * from './segment';
 export * from './campaign';
 export * from './wallet_connect';
-export * from './direct_call';
-// export * from './direct_call_native';
+// export * from './direct_call';
+export * from './direct_call_web';
 export { isOwnUser, chatCodes, logChatPromiseExecution, formatMessage } from './utils';
