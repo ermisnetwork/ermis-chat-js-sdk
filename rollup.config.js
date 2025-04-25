@@ -14,8 +14,8 @@ const externalPackages = ['axios', 'form-data', 'isomorphic-ws', 'base64-js', /@
 
 const browserIgnore = {
 	name: 'browser-remapper',
-	resolveId: (importee) => (['jsonwebtoken', 'https', 'crypto'].includes(importee) ? importee : null),
-	load: (id) => (['jsonwebtoken', 'https', 'crypto'].includes(id) ? 'export default null;' : null),
+	resolveId: (importee) => (['jsonwebtoken', 'https'].includes(importee) ? importee : null),
+	load: (id) => (['jsonwebtoken', 'https'].includes(id) ? 'export default null;' : null),
 };
 
 const extensions = ['.mjs', '.json', '.node', '.js', '.ts'];
@@ -47,7 +47,7 @@ const normalBundle = {
 			sourcemap: true,
 		},
 	],
-	external: externalPackages.concat(['https', 'jsonwebtoken', 'crypto']),
+	external: externalPackages.concat(['https', 'jsonwebtoken']),
 	plugins: [
 		replace({ preventAssignment: true, 'process.env.PKG_VERSION': JSON.stringify(pkg.version) }),
 		external(),
