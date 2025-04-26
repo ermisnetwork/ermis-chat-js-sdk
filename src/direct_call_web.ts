@@ -1,24 +1,14 @@
 import { ErmisChat } from './client';
-import { DefaultGenerics, Event, ExtendableGenerics, SignalData } from './types';
-
-enum CallAction {
-  CREATE_CALL = 'create-call',
-  ACCEPT_CALL = 'accept-call',
-  SIGNAL_CALL = 'signal-call',
-  CONNECT_CALL = 'connect-call',
-  HEALTH_CALL = 'health-call',
-  END_CALL = 'end-call',
-  REJECT_CALL = 'reject-call',
-  MISS_CALL = 'miss-call',
-  UPGRADE_CALL = 'upgrade-call',
-}
-
-enum CallStatus {
-  RINGING = 'ringing',
-  ENDED = 'ended',
-  CONNECTED = 'connected',
-  ERROR = 'error',
-}
+import {
+  CallAction,
+  CallEventData,
+  CallStatus,
+  DefaultGenerics,
+  Event,
+  ExtendableGenerics,
+  SignalData,
+  UserCallInfo,
+} from './types';
 
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -30,21 +20,11 @@ const ICE_SERVERS = [
   },
 ];
 
-type CallEventType = 'incoming' | 'outgoing';
-
-type CallEventData = {
-  type: CallEventType;
-  callType: string;
-  cid: string;
-  callerInfo: UserCallInfo | undefined;
-  receiverInfo: UserCallInfo | undefined;
-};
-
-type UserCallInfo = {
-  id: string;
-  name?: string;
-  avatar?: string;
-};
+// Interface for WebRTC signal data
+interface RTCSignalData {
+  type: string;
+  sdp?: string;
+}
 
 export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> {
   /** Reference to the Ermis Chat client instance */
@@ -66,9 +46,9 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   callStatus? = '';
 
   /** WebRTC peer connection instance */
-  peerConnection?: RTCPeerConnection | null = null;
+  peer?: RTCPeerConnection | null = null;
 
-  /** WebRTC data channel for sending messages */
+  /** WebRTC data channel instance */
   dataChannel?: RTCDataChannel | null = null;
 
   /** Local media stream from user's camera/microphone */
@@ -151,7 +131,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     return this._client;
   }
 
-  async _sendSignal(payload: SignalData) {
+  private async _sendSignal(payload: SignalData) {
     try {
       return await this.getClient().post(this.getClient().baseURL + '/signal', {
         ...payload,
@@ -178,21 +158,13 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     }
   }
 
-  async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      if (this.onLocalStream) {
-        this.onLocalStream(stream);
-      }
-      this.localStream = stream;
-      return stream;
-    } catch (err) {
-      console.error('Error accessing media devices:', err);
-      if (this.onError) {
-        this.onError('Failed to access camera or microphone');
-      }
-      throw err;
+  private async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (this.onLocalStream) {
+      this.onLocalStream(stream);
     }
+    this.localStream = stream;
+    return stream;
   }
 
   private setConnectionMessage(message: string | null) {
@@ -236,144 +208,138 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     };
   }
 
-  private createPeerConnection(isInitiator: boolean) {
-    if (this.peerConnection) {
-      this.peerConnection.close();
-      this.peerConnection = null;
+  private createPeer(initiator: boolean) {
+    if (this.peer) {
+      this.peer.close();
+      this.peer = null;
+      this.dataChannel = null;
     }
 
-    // Create new RTCPeerConnection
-    this.peerConnection = new RTCPeerConnection({
+    // Create new RTCPeerConnection with ICE servers
+    this.peer = new RTCPeerConnection({
       iceServers: ICE_SERVERS,
     });
 
-    // Add local stream tracks to peer connection
+    // Add local stream to peer connection
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => {
-        this.peerConnection?.addTrack(track, this.localStream!);
+        if (this.localStream && this.peer) {
+          this.peer.addTrack(track, this.localStream);
+        }
       });
     }
 
-    // Set up data channel
-    if (isInitiator) {
-      this.dataChannel = this.peerConnection.createDataChannel('rtc_data_channel');
+    // Handle ICE candidates
+    this.peer.onicecandidate = async (event) => {
+      if (event.candidate) {
+        const sdpMid = event.candidate.sdpMid || '';
+        const sdpMLineIndex = event.candidate.sdpMLineIndex || 0;
+        const candidate = event.candidate.candidate;
+        const sdp = `${sdpMid}$${sdpMLineIndex}$${candidate}`;
+
+        // Send ICE candidate to server
+        await this.signalCall({
+          type: 'ice',
+          sdp,
+        });
+      }
+    };
+
+    // Handle receiving remote stream
+    this.peer.ontrack = (event) => {
+      this.remoteStream = event.streams[0];
+      if (this.onRemoteStream) {
+        this.onRemoteStream(event.streams[0]);
+      }
+    };
+
+    // Handle ICE connection state changes
+    this.peer.oniceconnectionstatechange = () => {
+      if (this.peer?.iceConnectionState === 'connected' || this.peer?.iceConnectionState === 'completed') {
+        this.setCallStatus(CallStatus.CONNECTED);
+
+        // Clear missCall timeout when connected
+        if (this.missCallTimeout) {
+          clearTimeout(this.missCallTimeout);
+          this.missCallTimeout = null;
+        }
+
+        // Perform connectCall
+        this.connectCall();
+
+        // Set up health_call interval via WebRTC
+        if (this.healthCallInterval) clearInterval(this.healthCallInterval);
+        this.healthCallInterval = setInterval(() => {
+          if (this.dataChannel?.readyState === 'open') {
+            this.dataChannel.send(JSON.stringify({ type: 'health_call' }));
+          }
+        }, 1000);
+
+        // Set up healthCall interval via server
+        if (this.healthCallServerInterval) clearInterval(this.healthCallServerInterval);
+        this.healthCallServerInterval = setInterval(() => {
+          this.healthCall();
+        }, 10000);
+      } else if (
+        this.peer?.iceConnectionState === 'failed' ||
+        this.peer?.iceConnectionState === 'disconnected' ||
+        this.peer?.iceConnectionState === 'closed'
+      ) {
+        this.setCallStatus(CallStatus.ERROR);
+        this.cleanupCall();
+      }
+    };
+
+    // Create data channel if initiator
+    if (initiator) {
+      this.dataChannel = this.peer.createDataChannel('rtc_data_channel');
       this.setupDataChannel();
     } else {
-      this.peerConnection.ondatachannel = (event) => {
+      // Register event to receive data channel from initiator
+      this.peer.ondatachannel = (event) => {
         this.dataChannel = event.channel;
         this.setupDataChannel();
       };
     }
 
-    // Handle ICE candidates
-    this.peerConnection.onicecandidate = async (event) => {
-      if (event.candidate) {
-        // Convert ICE candidate to a format that can be transmitted
-        const sdpMid = event.candidate.sdpMid || '';
-        const sdpMLineIndex = event.candidate.sdpMLineIndex || 0;
-        const candidate = event.candidate.candidate;
-
-        // Format similar to the original implementation
-        const sdp = `${sdpMid}$${sdpMLineIndex}$${candidate}`;
-        const signal = { type: 'ice', sdp };
-
-        // Send the ICE candidate to the other peer
-        await this.signalCall(signal);
-      }
-    };
-
-    // Connection state changes
-    this.peerConnection.onconnectionstatechange = () => {
-      switch (this.peerConnection?.connectionState) {
-        case 'connected':
-          // Peers connected!
-          break;
-        case 'disconnected':
-        case 'failed':
-          if (this.callStatus === CallStatus.CONNECTED) {
-            this.setConnectionMessage('Connection lost');
-          }
-          break;
-        case 'closed':
-          this.cleanupCall();
-          break;
-      }
-    };
-
-    // ICE connection state changes
-    this.peerConnection.oniceconnectionstatechange = () => {
-      if (this.peerConnection?.iceConnectionState === 'failed') {
-        // ICE Gathering failed
-        this.setConnectionMessage('Connection failed');
-        if (this.onError) {
-          this.onError('Connection failed');
-        }
-      }
-    };
-
-    // Handle remote streams
-    this.peerConnection.ontrack = (event) => {
-      if (!this.remoteStream) {
-        this.remoteStream = new MediaStream();
-        if (this.onRemoteStream) {
-          this.onRemoteStream(this.remoteStream);
-        }
-      }
-
-      event.streams[0].getTracks().forEach((track) => {
-        this.remoteStream?.addTrack(track);
-      });
-    };
+    // If initiator, create offer
+    if (initiator) {
+      this.createOffer();
+    }
   }
 
+  // Set up and handle data channel
   private setupDataChannel() {
     if (!this.dataChannel) return;
 
     this.dataChannel.onopen = () => {
-      // Data channel is open, can send messages now
-      this.sendDataChannelMessage({
-        type: 'transciver_state',
-        body: {
-          audio_enable: true,
-          video_enable: this.callType === 'video',
-        },
-      });
+      // Send initial state when connection is established
+      if (this.dataChannel?.readyState === 'open') {
+        const jsonData = {
+          type: 'transciver_state',
+          body: {
+            audio_enable: true,
+            video_enable: this.callType === 'video',
+          },
+        };
 
-      this.connectCall(); // Signal that the call is connected
-      this.setCallStatus(CallStatus.CONNECTED);
-
-      // Clear missCall timeout when connected
-      if (this.missCallTimeout) {
-        clearTimeout(this.missCallTimeout);
-        this.missCallTimeout = null;
-      }
-
-      // Set up health_call interval via WebRTC every 1s
-      if (this.healthCallInterval) clearInterval(this.healthCallInterval);
-      this.healthCallInterval = setInterval(() => {
-        this.sendDataChannelMessage({ type: 'health_call' });
-      }, 1000);
-
-      // Set up healthCall interval via server every 10s
-      if (this.healthCallServerInterval) clearInterval(this.healthCallServerInterval);
-      this.healthCallServerInterval = setInterval(() => {
-        this.healthCall();
-      }, 10000);
-    };
-
-    this.dataChannel.onclose = () => {
-      console.log('Data channel closed');
-    };
-
-    this.dataChannel.onerror = (error) => {
-      console.error('Data channel error:', error);
-      if (this.onError) {
-        this.onError('Data channel error');
+        this.dataChannel.send(JSON.stringify(jsonData));
       }
     };
 
     this.dataChannel.onmessage = (event) => {
-      const message = JSON.parse(event.data);
+      let jsonString: string;
+
+      if (typeof event.data === 'string') {
+        jsonString = event.data;
+      } else if (event.data instanceof ArrayBuffer) {
+        jsonString = new TextDecoder().decode(event.data);
+      } else {
+        console.warn('Unknown data type received on data channel:', event.data);
+        return;
+      }
+
+      const message = JSON.parse(jsonString);
 
       if (typeof this.onDataChannelMessage === 'function') {
         this.onDataChannelMessage(message);
@@ -381,18 +347,18 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
       // Handle health_call
       if (message.type === 'health_call') {
-        // Reset timeout whenever health_call is received
+        // Reset timeout every time health_call is received
         if (this.healthCallTimeout) clearTimeout(this.healthCallTimeout);
         this.healthCallTimeout = setTimeout(async () => {
-          // If no health_call is received after 30s, end the call
+          // If no health_call received after 30s, end the call
           await this.endCall();
         }, 30000);
 
-        // Reset remote connection lost warning
+        // Reset connection lost warning
         if (this.healthCallWarningTimeout) clearTimeout(this.healthCallWarningTimeout);
         this.setConnectionMessage(null);
 
-        // If no health_call is received after 3s, show remote peer connection unstable warning
+        // If no health_call received after 3s, show warning
         this.healthCallWarningTimeout = setTimeout(() => {
           if (!this.isOffline) {
             this.setConnectionMessage(
@@ -404,80 +370,93 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         }, 3000);
       }
     };
+
+    this.dataChannel.onerror = (error) => {
+      console.error('Data channel error:', error);
+    };
+
+    this.dataChannel.onclose = () => {
+      this.dataChannel = null;
+    };
   }
 
-  private sendDataChannelMessage(data: any) {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.dataChannel.send(JSON.stringify(data));
+  // Method to create offer
+  private async createOffer() {
+    if (!this.peer) return;
+
+    try {
+      const offer = await this.peer.createOffer();
+      await this.peer.setLocalDescription(offer);
+      await this.signalCall(offer);
+    } catch (error) {
+      console.error('Error creating offer:', error);
+      if (typeof this.onError === 'function') {
+        this.onError('Error creating offer');
+      }
     }
   }
 
   private async makeOffer() {
-    this.createPeerConnection(true); // initiator = true
+    this.createPeer(true); // initiator = true
+  }
 
-    if (!this.peerConnection) return;
+  private async handleOffer(offer: RTCSignalData) {
+    this.createPeer(false); // initiator = false
 
-    try {
-      const offer = await this.peerConnection.createOffer();
-      await this.peerConnection.setLocalDescription(offer);
+    if (this.peer && offer.sdp) {
+      try {
+        await this.peer.setRemoteDescription(
+          new RTCSessionDescription({
+            type: 'offer',
+            sdp: offer.sdp,
+          }),
+        );
 
-      // Send offer to the other peer
-      await this.signalCall(this.peerConnection.localDescription);
-    } catch (err) {
-      console.error('Error creating offer:', err);
-      if (this.onError) {
-        this.onError('Failed to create offer');
+        // Create answer
+        const answer = await this.peer.createAnswer();
+        await this.peer.setLocalDescription(answer);
+        await this.signalCall(answer);
+      } catch (error) {
+        console.error('Error handling offer:', error);
+        if (typeof this.onError === 'function') {
+          this.onError('Error handling offer');
+        }
       }
     }
   }
 
-  private async handleOffer(offer: RTCSessionDescriptionInit) {
-    this.createPeerConnection(false); // initiator = false
-
-    if (!this.peerConnection) return;
-
-    try {
-      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await this.peerConnection.createAnswer();
-      await this.peerConnection.setLocalDescription(answer);
-
-      // Send answer to the other peer
-      await this.signalCall(this.peerConnection.localDescription);
-    } catch (err) {
-      console.error('Error handling offer:', err);
-      if (this.onError) {
-        this.onError('Failed to handle offer');
+  private async handleAnswer(answer: RTCSignalData) {
+    if (this.peer && answer.sdp) {
+      try {
+        await this.peer.setRemoteDescription(
+          new RTCSessionDescription({
+            type: 'answer',
+            sdp: answer.sdp,
+          }),
+        );
+      } catch (error) {
+        console.error('Error handling answer:', error);
+        if (typeof this.onError === 'function') {
+          this.onError('Error handling answer');
+        }
       }
     }
   }
 
-  private async handleAnswer(answer: RTCSessionDescriptionInit) {
-    if (!this.peerConnection) return;
+  private async handleIceCandidate(candidate: RTCSignalData) {
+    if (this.peer && candidate.sdp) {
+      try {
+        const splitSdp = candidate.sdp.split('$');
+        const iceCandidate = new RTCIceCandidate({
+          candidate: splitSdp[2],
+          sdpMLineIndex: Number(splitSdp[1]),
+          sdpMid: splitSdp[0],
+        });
 
-    try {
-      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    } catch (err) {
-      console.error('Error handling answer:', err);
-      if (this.onError) {
-        this.onError('Failed to handle answer');
+        await this.peer.addIceCandidate(iceCandidate);
+      } catch (error) {
+        console.error('Error adding ICE candidate:', error);
       }
-    }
-  }
-
-  private async handleIceCandidate(iceData: any) {
-    if (!this.peerConnection) return;
-
-    try {
-      const parts = iceData.sdp.split('$');
-      const candidate = new RTCIceCandidate({
-        sdpMid: parts[0],
-        sdpMLineIndex: parseInt(parts[1], 10),
-        candidate: parts[2],
-      });
-
-      await this.peerConnection.addIceCandidate(candidate);
-    } catch (err) {
-      console.error('Error adding ICE candidate:', err);
     }
   }
 
@@ -536,11 +515,11 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           if (eventUserId === this.userID) return;
 
           if (typeof signal === 'object' && signal !== null && 'type' in signal) {
-            const signalObj = signal as { type: string; [key: string]: any };
+            const signalObj = signal as RTCSignalData;
             if (signalObj.type === 'offer') {
-              await this.handleOffer(signalObj as RTCSessionDescriptionInit);
+              await this.handleOffer(signalObj);
             } else if (signalObj.type === 'answer') {
-              await this.handleAnswer(signalObj as RTCSessionDescriptionInit);
+              await this.handleAnswer(signalObj);
             } else if (signalObj.type === 'ice') {
               await this.handleIceCandidate(signalObj);
             }
@@ -575,10 +554,12 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         this.setConnectionMessage(null);
 
         // When back online, if CONNECTED, set up health_call intervals again
-        if (this.callStatus === CallStatus.CONNECTED && this.dataChannel) {
+        if (this.callStatus === CallStatus.CONNECTED && this.peer) {
           if (!this.healthCallInterval) {
             this.healthCallInterval = setInterval(() => {
-              this.sendDataChannelMessage({ type: 'health_call' });
+              if (this.dataChannel?.readyState === 'open') {
+                this.dataChannel.send(JSON.stringify({ type: 'health_call' }));
+              }
             }, 1000);
           }
           if (!this.healthCallServerInterval) {
@@ -607,13 +588,17 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         }
 
         if (upgradeUserId === this.userID) {
-          this.sendDataChannelMessage({
+          const jsonData = {
             type: 'transciver_state',
             body: {
               audio_enable: this.localStream?.getAudioTracks().some((track) => track.enabled),
               video_enable: true,
             },
-          });
+          };
+
+          if (this.dataChannel?.readyState === 'open') {
+            this.dataChannel.send(JSON.stringify(jsonData));
+          }
         }
       }
     };
@@ -624,16 +609,16 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   private cleanupCall() {
+    // Close peer connection
+    if (this.peer) {
+      this.peer.close();
+      this.peer = null;
+    }
+
     // Close data channel
     if (this.dataChannel) {
       this.dataChannel.close();
       this.dataChannel = null;
-    }
-
-    // Close peer connection
-    if (this.peerConnection) {
-      this.peerConnection.close();
-      this.peerConnection = null;
     }
 
     // Stop local stream if exists
@@ -642,31 +627,27 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       this.localStream = null;
     }
 
-    // Clear missCall timeout
+    // Clear all timeouts and intervals
     if (this.missCallTimeout) {
       clearTimeout(this.missCallTimeout);
       this.missCallTimeout = null;
     }
 
-    // Clear healthCall interval via WebRTC
     if (this.healthCallInterval) {
       clearInterval(this.healthCallInterval);
       this.healthCallInterval = null;
     }
 
-    // Clear healthCall interval via server
     if (this.healthCallServerInterval) {
       clearInterval(this.healthCallServerInterval);
       this.healthCallServerInterval = null;
     }
 
-    // Clear healthCall timeout
     if (this.healthCallTimeout) {
       clearTimeout(this.healthCallTimeout);
       this.healthCallTimeout = null;
     }
 
-    // Clear healthCall warning timeout
     if (this.healthCallWarningTimeout) {
       clearTimeout(this.healthCallWarningTimeout);
       this.healthCallWarningTimeout = null;
@@ -676,7 +657,9 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   private destroy() {
-    // Clean up WebRTC resources
+    // if (this.signalHandler) this._client.off('signal', this.signalHandler);
+    // if (this.connectionChangedHandler) this._client.off('connection.changed', this.connectionChangedHandler);
+    // if (this.messageUpdatedHandler) this._client.off('message.updated', this.messageUpdatedHandler);
     this.cleanupCall();
   }
 
@@ -720,99 +703,86 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   public async startScreenShare() {
+    // @ts-ignore
     if (!navigator.mediaDevices.getDisplayMedia) {
       throw new Error('Screen sharing is not supported in this browser.');
     }
 
-    try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const screenTrack = screenStream.getVideoTracks()[0];
+    // @ts-ignore
+    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    const screenTrack = screenStream.getVideoTracks()[0];
 
-      // Replace video track in localStream
-      if (this.localStream) {
-        // Stop old track
-        this.localStream.getVideoTracks().forEach((track) => track.stop());
-        // Add new track to localStream
-        this.localStream.removeTrack(this.localStream.getVideoTracks()[0]);
-        this.localStream.addTrack(screenTrack);
-      } else {
-        // If no localStream, create new one
-        this.localStream = screenStream;
+    // Replace video track in localStream
+    if (this.localStream) {
+      // Stop old track
+      this.localStream.getVideoTracks().forEach((track) => track.stop());
+      // Add new track to localStream
+      this.localStream.removeTrack(this.localStream.getVideoTracks()[0]);
+      this.localStream.addTrack(screenTrack);
+    } else {
+      // If no localStream, create new one
+      this.localStream = screenStream;
+    }
+
+    // Replace video track in peer connection
+    if (this.peer) {
+      const senders = this.peer.getSenders();
+      const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+      if (videoSender) {
+        await videoSender.replaceTrack(screenTrack);
       }
+    }
 
-      // Replace video track in RTCPeerConnection
-      if (this.peerConnection) {
-        const senders = this.peerConnection.getSenders();
-        const videoSender = senders.find((sender) => sender.track && sender.track.kind === 'video');
+    // When screen sharing stops, automatically switch back to camera
+    screenTrack.onended = () => {
+      this.stopScreenShare();
+    };
 
-        if (videoSender) {
-          await videoSender.replaceTrack(screenTrack);
-        }
-      }
+    // Call callback if UI needs to update
+    if (this.onLocalStream) {
+      // @ts-ignore
+      this.onLocalStream(this.localStream);
+    }
 
-      // When screen sharing stops, automatically revert to camera
-      screenTrack.onended = () => {
-        this.stopScreenShare();
-      };
-
-      // Call callback if UI needs to be updated
-      if (this.onLocalStream) {
-        this.onLocalStream(this.localStream);
-      }
-
-      // Call callback when starting screen share
-      if (typeof this.onScreenShareChange === 'function') {
-        this.onScreenShareChange(true);
-      }
-    } catch (err) {
-      console.error('Error starting screen share:', err);
-      if (this.onError) {
-        this.onError('Failed to start screen sharing');
-      }
+    // Call callback when screen sharing starts
+    if (typeof this.onScreenShareChange === 'function') {
+      this.onScreenShareChange(true);
     }
   }
 
   public async stopScreenShare() {
-    try {
-      // Get camera stream again
-      const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      const cameraTrack = cameraStream.getVideoTracks()[0];
+    // Get camera stream again
+    const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    const cameraTrack = cameraStream.getVideoTracks()[0];
 
-      // Replace video track in localStream
-      if (this.localStream) {
-        // Stop old (screen) track
-        this.localStream.getVideoTracks().forEach((track) => track.stop());
-        // Replace with camera track
-        this.localStream.removeTrack(this.localStream.getVideoTracks()[0]);
-        this.localStream.addTrack(cameraTrack);
-      } else {
-        this.localStream = cameraStream;
-      }
+    // Replace video track in localStream
+    if (this.localStream) {
+      // Stop old track (screen)
+      this.localStream.getVideoTracks().forEach((track) => track.stop());
+      // Replace with camera track
+      this.localStream.removeTrack(this.localStream.getVideoTracks()[0]);
+      this.localStream.addTrack(cameraTrack);
+    } else {
+      this.localStream = cameraStream;
+    }
 
-      // Replace video track in RTCPeerConnection
-      if (this.peerConnection) {
-        const senders = this.peerConnection.getSenders();
-        const videoSender = senders.find((sender) => sender.track && sender.track.kind === 'video');
+    // Replace video track in peer connection
+    if (this.peer) {
+      const senders = this.peer.getSenders();
+      const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+      if (videoSender) {
+        await videoSender.replaceTrack(cameraTrack);
+      }
+    }
 
-        if (videoSender) {
-          await videoSender.replaceTrack(cameraTrack);
-        }
-      }
+    // Call callback if UI needs to update
+    if (this.onLocalStream) {
+      this.onLocalStream(this.localStream);
+    }
 
-      // Call callback if UI needs to be updated
-      if (this.onLocalStream) {
-        this.onLocalStream(this.localStream);
-      }
-
-      // Call callback when stopping screen share
-      if (typeof this.onScreenShareChange === 'function') {
-        this.onScreenShareChange(false);
-      }
-    } catch (err) {
-      console.error('Error stopping screen share:', err);
-      if (this.onError) {
-        this.onError('Failed to stop screen sharing');
-      }
+    // Call callback when screen sharing stops
+    if (typeof this.onScreenShareChange === 'function') {
+      this.onScreenShareChange(false);
     }
   }
 
@@ -822,13 +792,17 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         track.enabled = enabled;
       });
 
-      this.sendDataChannelMessage({
-        type: 'transciver_state',
-        body: {
-          audio_enable: enabled,
-          video_enable: this.localStream.getVideoTracks().some((track) => track.enabled),
-        },
-      });
+      if (this.dataChannel && this.dataChannel.readyState === 'open') {
+        this.dataChannel.send(
+          JSON.stringify({
+            type: 'transciver_state',
+            body: {
+              audio_enable: enabled,
+              video_enable: this.localStream.getVideoTracks().some((track) => track.enabled),
+            },
+          }),
+        );
+      }
     }
   }
 
@@ -838,13 +812,17 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         track.enabled = enabled;
       });
 
-      this.sendDataChannelMessage({
-        type: 'transciver_state',
-        body: {
-          audio_enable: this.localStream.getAudioTracks().some((track) => track.enabled),
-          video_enable: enabled,
-        },
-      });
+      if (this.dataChannel && this.dataChannel.readyState === 'open') {
+        this.dataChannel.send(
+          JSON.stringify({
+            type: 'transciver_state',
+            body: {
+              audio_enable: this.localStream.getAudioTracks().some((track) => track.enabled),
+              video_enable: enabled,
+            },
+          }),
+        );
+      }
     }
   }
 }

@@ -3191,9 +3191,45 @@ export type AttachmentResponse<ErmisChatGenerics extends ExtendableGenerics = De
   attachments: Attachment<ErmisChatGenerics>[];
 };
 export class ExtendAxiosError<T = any> extends AxiosError<T> {}
+
 export type SignalData = {
   cid?: string;
   is_video?: boolean;
   action?: string;
   signal?: Object;
+};
+
+export enum CallAction {
+  CREATE_CALL = 'create-call',
+  ACCEPT_CALL = 'accept-call',
+  SIGNAL_CALL = 'signal-call',
+  CONNECT_CALL = 'connect-call',
+  HEALTH_CALL = 'health-call',
+  END_CALL = 'end-call',
+  REJECT_CALL = 'reject-call',
+  MISS_CALL = 'miss-call',
+  UPGRADE_CALL = 'upgrade-call',
+}
+
+export enum CallStatus {
+  RINGING = 'ringing',
+  ENDED = 'ended',
+  CONNECTED = 'connected',
+  ERROR = 'error',
+}
+
+export type CallEventType = 'incoming' | 'outgoing';
+
+export type CallEventData = {
+  type: CallEventType;
+  callType: string;
+  cid: string;
+  callerInfo: UserCallInfo | undefined;
+  receiverInfo: UserCallInfo | undefined;
+};
+
+export type UserCallInfo = {
+  id: string;
+  name?: string;
+  avatar?: string;
 };
