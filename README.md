@@ -271,6 +271,7 @@ await channel.sendMessage({
 1. [User management](#user-management)
 1. [Channel management](#channel-management)
 1. [Message management](#message-management)
+1. [Call management](#call-management)
 1. [Events](#events)
 
 ### User management
@@ -1524,23 +1525,6 @@ Below you can find the complete list of system message that are returned by mess
 | MessagePinned                   | `19 user_id message_id`  | Member X has pinned a message                                   |
 | MessageUnpinned                 | `20 user_id message_id`  | Member X has unpinned a message                                 |
 
-#### 12. Signal message
-
-Signal messages represent call-related events in the chat system. These are special message types that indicate various call activities between users.
-
-| Name              | Syntax                          | Description                                                                                     |
-| :---------------- | :------------------------------ | :---------------------------------------------------------------------------------------------- |
-| AudioCallStarted  | `1 user_id`                     | Indicates that user_id has initiated an audio call in this channel                              |
-| AudioCallMissed   | `2 user_id`                     | Indicates that an audio call from user_id was not answered                                      |
-| AudioCallEnded    | `3 caller_id ender_id duration` | Indicates that an audio call initiated by caller_id was ended by ender_id, lasting for duration |
-| VideoCallStarted  | `4 user_id`                     | Indicates that user_id has initiated a video call in this channel                               |
-| VideoCallMissed   | `5 user_id`                     | Indicates that a video call from user_id was not answered                                       |
-| VideoCallEnded    | `6 caller_id ender_id duration` | Indicates that a video call initiated by caller_id was ended by ender_id, lasting for duration  |
-| AudioCallRejected | `7 user_id`                     | Indicates that an audio call from user_id was explicitly rejected by the recipient              |
-| VideoCallRejected | `8 user_id`                     | Indicates that a video call from user_id was explicitly rejected by the recipient               |
-| AudioCallBusy     | `9 user_id`                     | Indicates that the recipient was busy when user_id attempted an audio call                      |
-| VideoCallBusy     | `10 user_id`                    | Indicates that the recipient was busy when user_id attempted a video call                       |
-
 <br />
 
 ### Call management
@@ -1565,7 +1549,7 @@ const callClient = new ErmisDirectCall(chatClient, sessionID);
 
 | Name       | Type   | Required | Description                                                                                    |
 | :--------- | :----- | :------- | :--------------------------------------------------------------------------------------------- |
-| chatClient | Object | Yes      | The initialized ErmisChat client instance                                                      |
+| chatClient | object | Yes      | The initialized ErmisChat client instance                                                      |
 | sessionID  | string | Yes      | A random ID generated during login and stored in localStorage for identifying the call session |
 
 #### 2. Call handling functions
@@ -1709,6 +1693,23 @@ callClient.onError = (error) => {
 };
 ```
 
+#### 4. Signal message
+
+Signal messages represent call-related events in the chat system. These are special message types that indicate various call activities between users.
+
+| Name              | Syntax                          | Description                                                                                     |
+| :---------------- | :------------------------------ | :---------------------------------------------------------------------------------------------- |
+| AudioCallStarted  | `1 user_id`                     | Indicates that user_id has initiated an audio call in this channel                              |
+| AudioCallMissed   | `2 user_id`                     | Indicates that an audio call from user_id was not answered                                      |
+| AudioCallEnded    | `3 caller_id ender_id duration` | Indicates that an audio call initiated by caller_id was ended by ender_id, lasting for duration |
+| VideoCallStarted  | `4 user_id`                     | Indicates that user_id has initiated a video call in this channel                               |
+| VideoCallMissed   | `5 user_id`                     | Indicates that a video call from user_id was not answered                                       |
+| VideoCallEnded    | `6 caller_id ender_id duration` | Indicates that a video call initiated by caller_id was ended by ender_id, lasting for duration  |
+| AudioCallRejected | `7 user_id`                     | Indicates that an audio call from user_id was explicitly rejected by the recipient              |
+| VideoCallRejected | `8 user_id`                     | Indicates that a video call from user_id was explicitly rejected by the recipient               |
+| AudioCallBusy     | `9 user_id`                     | Indicates that the recipient was busy when user_id attempted an audio call                      |
+| VideoCallBusy     | `10 user_id`                    | Indicates that the recipient was busy when user_id attempted a video call                       |
+
 <br />
 
 ### Events
@@ -1747,6 +1748,7 @@ A full list of events is shown below. The next section of the documentation expl
 | `connection.changed` | when the connection status changes (e.g., network loss) | local event
 | `user.watching.start` | when a user starts watching a channel | clients watching the channel
 | `user.watching.stop` | when a user stops watching a channel | clients watching the channel
+| `signal` | when call-related notifications are sent in direct channels (audio/video calls) | clients watching the channel
 
 #### 1. Listening for Events
 
