@@ -1193,7 +1193,92 @@ await channel.deleteMessage(message_id);
 }
 ```
 
-#### 5. Search message
+#### 5. Pin and Unpin message
+
+The pin message feature allows users to highlight important messages in a channel for all members to easily access.
+
+**5.1 Pin a message**
+
+```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+await channel.pinMessage(message_id);
+```
+
+**5.2 Unpin a message**
+
+```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+await channel.unpinMessage(message_id);
+```
+
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "99873843-757f-4b3a-95d0-0773314fb115",
+    "text": "Hello",
+    "type": "regular",
+    "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd",
+    "user": {
+        "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+    },
+    "created_at": "2024-08-29T10:44:40.022289401+00:00"
+  },
+  "duration": "0ms"
+}
+```
+
+**5.3 Get pinned messages**
+
+```javascript
+const pinnedMessages = channel.state.pinnedMessages;
+```
+
+#### 6. Forward message
+
+The forward message feature enables users to share an existing message from one channel to another channel.
+
+```javascript
+const message = {
+  cid: 'messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:9ac864b9-d6af-4128-9962-829415eaad28', // Destination channel CID
+  text: 'Message to forward',
+  forward_cid: 'team:b44937e4-c0d4-4a73-847c-3730a923ce83:091728e3-1b19-4381-b62a-cbc5e8ad5342', // Source channel CID (current channel)
+  attachments: [], // Any attachments to forward
+};
+
+const targetChannel = {
+  type: 'team', // 'team' or 'messaging'
+  channelID: 'b44937e4-c0d4-4a73-847c-3730a923ce83:9ac864b9-d6af-4128-9962-829415eaad28', // Destination channel ID
+};
+
+await channel.forwardMessage(message, targetChannel);
+```
+
+| Name                  | Type   | Required | Description                                                   |
+| :-------------------- | :----- | :------- | :------------------------------------------------------------ |
+| message               | object | Yes      | The message object containing the content to forward          |
+| `message.cid`         | string | Yes      | The destination channel CID where the message will be sent    |
+| `message.forward_cid` | string | Yes      | The source channel CID where the message is currently located |
+| targetChannel         | object | Yes      | The destination channel details with type and channelID       |
+
+**Response**
+
+```javascript
+{
+  "id": "edfa7870-2400-482a-b5d3-3f61d407e4ac",
+  "text": "Message to forward",
+  "type": "regular",
+  "cid": "messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:9ac864b9-d6af-4128-9962-829415eaad28",
+  "user": {
+      "id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d"
+  },
+  "created_at": "2025-04-28T07:44:24.927677457Z",
+  "forward_cid": "team:b44937e4-c0d4-4a73-847c-3730a923ce83:091728e3-1b19-4381-b62a-cbc5e8ad5342"
+}
+```
+
+#### 7. Search message
 
 The message search feature returns up to 25 messages per query, helping users efficiently find specific messages in the chat
 
@@ -1242,32 +1327,32 @@ await channel.searchMessage(search_term, offset);
 }
 ```
 
-#### 6. Unread messages
+#### 8. Unread messages
 
 Retrieves messages that have not been read by the user, helping to keep track of new or pending messages
 
-**6.1 Unread messages in a channel**
+**8.1 Unread messages in a channel**
 By using `countUnread()`, you can retrieve the total number of unread messages of a user in a group channel.
 
 ```javascript
 channel.countUnread();
 ```
 
-**6.2 Get member unread messages**
+**8.2 Get member unread messages**
 `getUnreadMemberCount()` Determines the number of members in the channel who have not read the messages. This function helps manage and track the read status of messages among channel members.
 
 ```javascript
 channel.getUnreadMemberCount();
 ```
 
-**6.3 Marking a channel as read**
+**8.3 Marking a channel as read**
 You can mark all messages in a channel as read on the client-side:
 
 ```javascript
 await channel.markRead();
 ```
 
-**6.4 Jump to last read message**
+**8.4 Jump to last read message**
 This is how you can jump to the last read message in a specific channel:
 
 ```javascript
@@ -1277,7 +1362,7 @@ await channel.state.loadMessageIntoState(lastReadMessageId);
 console.log(channel.state.messages);
 ```
 
-#### 7. Reactions
+#### 9. Reactions
 
 The Reaction feature allows users to send, manage reactions on messages, and delete reactions when necessary.
 
@@ -1310,7 +1395,7 @@ const EMOJI_QUICK = [
 ];
 ```
 
-**7.1. Send a reaction:**
+**9.1. Send a reaction:**
 
 ```javascript
 const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
@@ -1367,7 +1452,7 @@ await channel.sendReaction(message_id, reaction_type);
 }
 ```
 
-**7.2. Delete a reaction:**
+**9.2. Delete a reaction:**
 
 ```javascript
 const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
@@ -1381,7 +1466,7 @@ await channel.deleteReaction(message_id, reaction_type);
 | message_id    | string | Yes      | ID of the message to react to                                                  |
 | reaction_type | string | Yes      | Type of the reaction. User could have only 1 reaction of each type per message |
 
-#### 8. Typing Indicators
+#### 10. Typing Indicators
 
 Typing indicators feature lets users see who is currently typing in the channel
 
@@ -1412,27 +1497,217 @@ channel.on('typing.stop', (event) => {
 });
 ```
 
-#### 9. System message
+#### 11. System message
 
 Below you can find the complete list of system message that are returned by messages from channel. You can define from syntax message by description.
 
-| Name                            | Syntax                   | Description                                        |
-| :------------------------------ | :----------------------- | :------------------------------------------------- |
-| UpdateChannelName               | `1 user_id channel_name` | Member X updated name of channel                   |
-| UpdateChannelImage              | `2 user_id`              | Member X updated image of channel                  |
-| UpdateChannelDescription        | `3 user_id`              | Member X updated description of channel            |
-| MemberRemoved                   | `4 user_id`              | Member X has been removed from this channel        |
-| MemberBanned                    | `5 user_id`              | Member X has been banned from interacting          |
-| MemberUnbanned                  | `6 user_id`              | Member X has been unbanned from interacting        |
-| MemberPromoted                  | `7 user_id`              | Member X has been assigned as the moderator        |
-| MemberDemoted                   | `8 user_id`              | Member X has been demoted to member                |
-| UpdateChannelMemberCapabilities | `9 user_id`              | Member X has updated member permission of channel  |
-| InviteAccepted                  | `10 user_id`             | Member X has joined this channel                   |
-| InviteRejected                  | `11 user_id`             | Member X has rejected to join this channel         |
-| MemberLeave                     | `12 user_id`             | Member X has leaved this channel                   |
-| TruncateMessages                | `13 user_id`             | Member X has truncate all messages of this channel |
-| UpdateMemberMessageCooldown     | `15 user_id duration`    | Member X has update channel message cooldown       |
-| UpdateFilterWords               | `16 user_id`             | Member X has update channel filter words           |
+| Name                            | Syntax                   | Description                                                     |
+| :------------------------------ | :----------------------- | :-------------------------------------------------------------- |
+| UpdateChannelName               | `1 user_id channel_name` | Member X updated name of channel                                |
+| UpdateChannelImage              | `2 user_id`              | Member X updated image of channel                               |
+| UpdateChannelDescription        | `3 user_id`              | Member X updated description of channel                         |
+| MemberRemoved                   | `4 user_id`              | Member X has been removed from this channel                     |
+| MemberBanned                    | `5 user_id`              | Member X has been banned from interacting                       |
+| MemberUnbanned                  | `6 user_id`              | Member X has been unbanned from interacting                     |
+| MemberPromoted                  | `7 user_id`              | Member X has been assigned as the moderator                     |
+| MemberDemoted                   | `8 user_id`              | Member X has been demoted to member                             |
+| UpdateChannelMemberCapabilities | `9 user_id`              | Member X has updated member permission of channel               |
+| InviteAccepted                  | `10 user_id`             | Member X has joined this channel                                |
+| InviteRejected                  | `11 user_id`             | Member X has rejected to join this channel                      |
+| MemberLeave                     | `12 user_id`             | Member X has leaved this channel                                |
+| TruncateMessages                | `13 user_id`             | Member X has truncate all messages of this channel              |
+| UpdatePublic                    | `14 user_id true/false`  | Member X has made this channel public (true) or private (false) |
+| UpdateMemberMessageCooldown     | `15 user_id duration`    | Member X has update channel message cooldown                    |
+| UpdateFilterWords               | `16 user_id`             | Member X has update channel filter words                        |
+| MemberJoined                    | `17 user_id`             | Member X has been joined to this channel                        |
+| OwnerPromoted                   | `18 old_id new_id`       | Member X has promoted Member Y to Owner                         |
+| MessagePinned                   | `19 user_id message_id`  | Member X has pinned a message                                   |
+| MessageUnpinned                 | `20 user_id message_id`  | Member X has unpinned a message                                 |
+
+#### 12. Signal message
+
+Signal messages represent call-related events in the chat system. These are special message types that indicate various call activities between users.
+
+| Name              | Syntax                          | Description                                                                                     |
+| :---------------- | :------------------------------ | :---------------------------------------------------------------------------------------------- |
+| AudioCallStarted  | `1 user_id`                     | Indicates that user_id has initiated an audio call in this channel                              |
+| AudioCallMissed   | `2 user_id`                     | Indicates that an audio call from user_id was not answered                                      |
+| AudioCallEnded    | `3 caller_id ender_id duration` | Indicates that an audio call initiated by caller_id was ended by ender_id, lasting for duration |
+| VideoCallStarted  | `4 user_id`                     | Indicates that user_id has initiated a video call in this channel                               |
+| VideoCallMissed   | `5 user_id`                     | Indicates that a video call from user_id was not answered                                       |
+| VideoCallEnded    | `6 caller_id ender_id duration` | Indicates that a video call initiated by caller_id was ended by ender_id, lasting for duration  |
+| AudioCallRejected | `7 user_id`                     | Indicates that an audio call from user_id was explicitly rejected by the recipient              |
+| VideoCallRejected | `8 user_id`                     | Indicates that a video call from user_id was explicitly rejected by the recipient               |
+| AudioCallBusy     | `9 user_id`                     | Indicates that the recipient was busy when user_id attempted an audio call                      |
+| VideoCallBusy     | `10 user_id`                    | Indicates that the recipient was busy when user_id attempted a video call                       |
+
+<br />
+
+### Call management
+
+The call feature enables real-time audio and video communication between users in direct messaging channels.
+
+#### 1. Initiating the call client
+
+Users can start a call in a direct channel (type `messaging`). This feature is not available for group channels (type `team`).
+
+```javascript
+import { ErmisDirectCall } from 'ermis-chat-js-sdk';
+
+// Generate a random sessionID when user logs in and store it
+// This should be done once during authentication and saved
+const sessionID = localStorage.getItem('ermis_call_session_id') || crypto.randomUUID(); // or any method to generate random ID
+localStorage.setItem('ermis_call_session_id', sessionID);
+
+// Initialize the call client
+const callClient = new ErmisDirectCall(chatClient, sessionID);
+```
+
+| Name       | Type   | Required | Description                                                                                    |
+| :--------- | :----- | :------- | :--------------------------------------------------------------------------------------------- |
+| chatClient | Object | Yes      | The initialized ErmisChat client instance                                                      |
+| sessionID  | string | Yes      | A random ID generated during login and stored in localStorage for identifying the call session |
+
+#### 2. Call handling functions
+
+**2.1 Creating a call**
+Start an audio or video call in a direct messaging channel:
+
+```javascript
+const call_type = 'video'; // 'video' or 'audio'
+const cid = 'messaging:b44937e4-c0d4-4a73-847c-3730a923ce83:65c07c7cc7c28e32d8f797c2e13c3e02f1fd';
+await callClient.createCall(call_type, cid);
+```
+
+**2.2 Accepting a call**
+Accept an incoming call:
+
+```javascript
+await callClient.acceptCall();
+```
+
+**2.3 Rejecting a call**
+Reject an incoming call:
+
+```javascript
+await callClient.rejectCall();
+```
+
+**2.4 Ending a call**
+End an active call:
+
+```javascript
+await callClient.endCall();
+```
+
+**2.5 Upgrading a call**
+Upgrade an audio call to a video call:
+
+```javascript
+await callClient.upgradeCall();
+```
+
+**2.6 Toggle microphone**
+Mute or unmute the microphone during a call:
+
+```javascript
+callClient.toggleMic(true); // Enable microphone
+callClient.toggleMic(false); // Disable microphone
+```
+
+**2.7 Toggle camera**
+Turn the camera on or off during a video call:
+
+```javascript
+callClient.toggleCamera(true); // Enable camera
+callClient.toggleCamera(false); // Disable camera
+```
+
+#### 3. Callback functions
+
+The call client provides various callback functions to handle different aspects of the call:
+
+**3.1 Call event handler**
+Triggered when a call event occurs (incoming or outgoing).
+
+```javascript
+callClient.onCallEvent = (data) => {
+  console.log(`Call type: ${data.type}`); // 'incoming' or 'outgoing'
+  console.log(`Call mode: ${data.callType}`); // 'audio' or 'video'
+};
+```
+
+**3.2 Local stream handler**
+Triggered when the local video stream is ready.
+
+```javascript
+callClient.onLocalStream = (stream) => {
+  // Attach the local stream to a video element
+  const localVideoElement = document.getElementById('local-video');
+  localVideoElement.srcObject = stream;
+};
+```
+
+**3.3 Remote stream handler**
+Triggered when the remote video stream is received.
+
+```javascript
+callClient.onRemoteStream = (stream) => {
+  // Attach the remote stream to a video element
+  const remoteVideoElement = document.getElementById('remote-video');
+  remoteVideoElement.srcObject = stream;
+};
+```
+
+**3.4 Connection message handler**
+Triggered when the connection status message changes
+
+```javascript
+callClient.onConnectionMessageChange = (message) => {
+  // Handle connection messages (e.g., "Your network connection is unstable")
+  console.log('Connection status:', message);
+};
+```
+
+**3.5 Call status handler**
+Triggered when the call status changes.
+
+```javascript
+callClient.onCallStatus = (status) => {
+  // Handle call status updates (RINGING, CONNECTED, ENDED)
+  console.log('Call status changed:', status);
+};
+```
+
+**3.6 Data channel message handler**
+Triggered when a message is received through the WebRTC data channel.
+
+```javascript
+callClient.onDataChannelMessage = (data) => {
+  // Handle data channel messages
+  console.log('Data channel message received:', data);
+};
+```
+
+**3.7 Call upgrade handler**
+Triggered when a call is upgraded from audio to video.
+
+```javascript
+callClient.onUpgradeCall = (upgraderInfo) => {
+  // Handle call upgrade
+  console.log('upgraderInfo:', event);
+};
+```
+
+**3.8 Error handler**
+Triggered when an error occurs during the call.
+
+```javascript
+callClient.onError = (error) => {
+  // Handle error
+  console.error('Call error:', error);
+};
+```
 
 <br />
 
@@ -1447,6 +1722,8 @@ A full list of events is shown below. The next section of the documentation expl
 | `message.read` | when a channel is marked as read | clients watching the channel
 | `message.deleted` | when a message is deleted | clients watching the channel
 | `message.updated` | when a message is updated | clients watching the channel
+| `message.pinned` | when a message is pinned | clients watching the channel
+| `message.unpinned` | when a message is unpinned | clients watching the channel
 | `typing.start` | when a user starts typing | clients watching the channel
 | `typing.stop` | when a user stops typing | clients watching the channel
 | `reaction.new` | when a message reaction is added | clients watching the channel
@@ -1459,11 +1736,17 @@ A full list of events is shown below. The next section of the documentation expl
 | `member.unbanned` | when a member is unban to a channel | clients watching the channel
 | `member.blocked` | when a direct channel is blocked | clients watching the channel
 | `member.unblocked` | when a direct channel is unblocked | clients watching the channel
-| `notification.added_to_channel` | when the user is added to the list of channel members | clients from the user added that are not watching the channel
+| `member.joined` | when a user joins a channel through an invitation link | clients watching the channel
+| `member.updated` | when a user toggles notification settings for a channel | clients watching the channel
 | `notification.invite_accepted` | when the user accepts an invite | clients from the user invited that are not watching the channel
 | `notification.invite_rejected` | when the user rejects an invite | clients from the user invited that are not watching the channel
 | `channel.deleted` | when a channel is deleted | clients watching the channel
 | `channel.updated` | when a channel is updated | clients watching the channel
+| `channel.truncate` | when messages in a direct channel (messaging) are truncated | clients watching the channel
+| `channel.created` | when the user is added to the list of channel members | clients watching the channel
+| `connection.changed` | when the connection status changes (e.g., network loss) | local event
+| `user.watching.start` | when a user starts watching a channel | clients watching the channel
+| `user.watching.stop` | when a user stops watching a channel | clients watching the channel
 
 #### 1. Listening for Events
 
