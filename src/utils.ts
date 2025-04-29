@@ -374,7 +374,18 @@ export function addToMessageList<ErmisChatGenerics extends ExtendableGenerics = 
   if (addMessageToList) {
     messageArr.splice(left, 0, message);
   }
-  return [...messageArr];
+
+  // Remove duplicate messages by ID
+  const map = new Map();
+  const uniqueMessages = [];
+
+  for (const msg of messageArr) {
+    if (!map.has(msg.id)) {
+      map.set(msg.id, true);
+      uniqueMessages.push(msg);
+    }
+  }
+  return uniqueMessages;
 }
 
 function maybeGetReactionGroupsFallback(
