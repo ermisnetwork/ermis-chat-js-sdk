@@ -1926,7 +1926,18 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
     this.state.membership = state.membership || {};
 
-    const messages = state.messages || [];
+    // Remove duplicate messages by ID
+    const map = new Map();
+    const uniqueMessages = [];
+
+    for (const msg of state.messages) {
+      if (!map.has(msg.id)) {
+        map.set(msg.id, true);
+        uniqueMessages.push(msg);
+      }
+    }
+
+    const messages = uniqueMessages || [];
     if (!this.state.messages) {
       this.state.initMessages();
     }
