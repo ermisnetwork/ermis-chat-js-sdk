@@ -165,7 +165,19 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   private async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    // Get the list of available media devices
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    // Check if the device has a camera (video input)
+    const hasCamera = devices.some((device) => device.kind === 'videoinput');
+
+    // If the device has a camera, set video to true; otherwise, only get audio
+    const finalConstraints: MediaStreamConstraints = {
+      audio: constraints.audio,
+      video: hasCamera ? constraints.video : false,
+    };
+
+    // Request the media stream with the determined constraints
+    const stream = await navigator.mediaDevices.getUserMedia(finalConstraints);
     if (this.onLocalStream) {
       this.onLocalStream(stream);
     }
