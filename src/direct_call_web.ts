@@ -117,6 +117,12 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   /** Flag indicating if the user is offline */
   private isOffline: boolean = false;
 
+  /**
+   * True if this call instance is destroyed (e.g., when another device accepts the call).
+   * When true, SIGNAL_CALL events will be ignored.
+   */
+  private isDestroyed = false;
+
   constructor(client: ErmisChat<ErmisChatGenerics>, sessionID: string) {
     this._client = client;
     this.cid = '';
@@ -466,6 +472,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
       switch (action) {
         case CallAction.CREATE_CALL:
+          this.isDestroyed = false;
           await this.startLocalStream({ audio: true, video: true });
           this.setUserInfo(cid, eventUserId);
           this.setCallStatus(CallStatus.RINGING);
@@ -507,12 +514,13 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
             if (eventSessionId !== this.sessionID) {
               this.setCallStatus(CallStatus.ENDED);
               this.destroy();
+              this.isDestroyed = true;
             }
           }
           break;
 
         case CallAction.SIGNAL_CALL:
-          if (eventUserId === this.userID) return;
+          if (eventUserId === this.userID || this.isDestroyed) return;
 
           if (typeof signal === 'object' && signal !== null && 'type' in signal) {
             const signalObj = signal as RTCSignalData;
