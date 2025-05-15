@@ -484,6 +484,13 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
       switch (action) {
         case CallAction.CREATE_CALL:
+          if (eventUserId === this.userID && eventSessionId !== this.sessionID) {
+            // If the event is triggered by the current user but the session ID is different,
+            // it means another device (or tab) of the same user has started a call.
+            // In this case, mark this call instance as destroyed and ignore further events.
+            this.isDestroyed = true;
+            return;
+          }
           this.isDestroyed = false;
           await this.startLocalStream({ audio: true, video: true });
           this.setUserInfo(cid, eventUserId);
@@ -491,25 +498,13 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           this.callType = is_video ? 'video' : 'audio';
           this.cid = cid || '';
           if (typeof this.onCallEvent === 'function') {
-            if (eventUserId !== this.userID) {
-              // Incoming call
-              this.onCallEvent({
-                type: 'incoming',
-                callType: is_video ? 'video' : 'audio',
-                cid: cid || '',
-                callerInfo: this.callerInfo,
-                receiverInfo: this.receiverInfo,
-              });
-            } else {
-              // Outgoing call
-              this.onCallEvent({
-                type: 'outgoing',
-                callType: is_video ? 'video' : 'audio',
-                cid: cid || '',
-                callerInfo: this.callerInfo,
-                receiverInfo: this.receiverInfo,
-              });
-            }
+            this.onCallEvent({
+              type: eventUserId !== this.userID ? 'incoming' : 'outgoing',
+              callType: is_video ? 'video' : 'audio',
+              cid: cid || '',
+              callerInfo: this.callerInfo,
+              receiverInfo: this.receiverInfo,
+            });
           }
           // Set missCall timeout if no connection after 60s
           if (this.missCallTimeout) clearTimeout(this.missCallTimeout);
@@ -519,15 +514,20 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           break;
 
         case CallAction.ACCEPT_CALL:
-          if (eventUserId !== this.userID) {
+          if (eventUserId !== this.userID && !this.isDestroyed) {
             // Caller: when receiver accepts, create offer and send to receiver
             await this.makeOffer();
-          } else {
-            if (eventSessionId !== this.sessionID) {
-              this.setCallStatus(CallStatus.ENDED);
-              this.destroy();
-              this.isDestroyed = true;
-            }
+            return;
+          }
+
+          if (eventSessionId !== this.sessionID) {
+            // If the event is triggered by the current user but the session ID is different,
+            // This means another device (or tab) of the same user has answered the call.
+            // In this case, end and destroy the current call instance, and mark it as destroyed
+            // so it will ignore further call events.
+            this.setCallStatus(CallStatus.ENDED);
+            this.destroy();
+            this.isDestroyed = true;
           }
           break;
 
