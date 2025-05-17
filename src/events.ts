@@ -37,6 +37,7 @@ export const EVENT_MAP = {
   'poll.vote_casted': true,
   'poll.vote_changed': true,
   'poll.vote_removed': true,
+  'pollchoice.new': true,
   'reaction.deleted': true,
   'reaction.new': true,
   'reaction.updated': true,

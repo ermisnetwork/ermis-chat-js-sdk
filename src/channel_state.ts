@@ -25,6 +25,7 @@ type ChannelReadStatus<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     first_unread_message_id?: string;
     last_read_message_id?: string;
     last_send?: string;
+    is_from_cache?: boolean;
   }
 >;
 

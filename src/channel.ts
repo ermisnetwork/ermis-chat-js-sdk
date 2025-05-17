@@ -58,6 +58,7 @@ import {
   AscDesc,
   Attachment,
   AttachmentResponse,
+  PollMessage,
 } from './types';
 import { Role } from './permissions';
 
@@ -183,6 +184,31 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       message: { ...message },
       ...options,
     });
+  }
+
+  async createPoll(pollMessage: PollMessage) {
+    const id = randomId();
+    pollMessage = { ...pollMessage, id };
+
+    return await this.getClient().post<SendMessageAPIResponse<ErmisChatGenerics>>(this._channelURL() + '/message', {
+      message: { ...pollMessage },
+    });
+  }
+
+  /**
+   * votePoll - Cast a vote for a poll choice
+   * @param {string} messageId - The message ID containing the poll
+   * @param {string} pollChoice - The poll choice ID to vote for
+   * @returns {Promise<APIResponse>} The server response
+   */
+
+  async votePoll(messageID: string, pollChoice: string) {
+    if (!messageID) {
+      throw Error(`Message id is missing`);
+    }
+    return await this.getClient().post<APIResponse>(
+      this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageID}/poll/${pollChoice}`,
+    );
   }
 
   async forwardMessage(message: Message<ErmisChatGenerics>, channel: { type: string; channelID: string }) {
@@ -1811,6 +1837,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           channelState.addMessageSorted(event.message, false, false);
         }
         break;
+      case 'pollchoice.new':
+        if (event.message) {
+          channelState.addMessageSorted(event.message, false, false);
+        }
+        break;
       case 'reaction.new':
         if (event.message && event.reaction) {
           event.message = channelState.addReaction(event.reaction, event.message);
@@ -1987,6 +2018,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           unread_messages: read.unread_messages ?? 0,
           user: read.user,
           last_send: read.last_send,
+          is_from_cache: read.is_from_cache,
         };
 
         if (read.user.id === user?.id) {

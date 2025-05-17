@@ -755,6 +755,7 @@ export type ReadResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultG
   last_read_message_id?: string;
   unread_messages?: number;
   last_send?: string;
+  is_from_cache?: boolean;
 };
 
 export type SearchAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
@@ -2436,6 +2437,14 @@ export type Message<ErmisChatGenerics extends ExtendableGenerics = DefaultGeneri
   cid?: string;
   forward_cid?: string;
   poll_type?: string; // single | multiple
+  poll_choices?: string[];
+};
+
+export type PollMessage = {
+  id: string;
+  text: string;
+  poll_type: string; // single | multiple
+  poll_choices: string[];
 };
 
 export type MessageBase<
