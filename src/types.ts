@@ -2441,7 +2441,7 @@ export type Message<ErmisChatGenerics extends ExtendableGenerics = DefaultGeneri
 };
 
 export type PollMessage = {
-  id: string;
+  id?: string;
   text: string;
   poll_type: string; // single | multiple
   poll_choices: string[];
