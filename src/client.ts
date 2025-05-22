@@ -19,6 +19,8 @@ import {
   addFileToFormData,
   axiosParamsSerializer,
   chatCodes,
+  enrichWithUserInfo,
+  getDirectChannelName,
   isFunction,
   isOnline,
   isOwnUserBaseProperty,
@@ -1373,6 +1375,27 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     if (event.type === 'notification.invite_accepted') {
       //TODO handle channel list and invited channels here
     }
+
+    if (event.type === 'channel.created') {
+      const users = Object.values(this.state.users);
+      const members = enrichWithUserInfo(event.channel?.members || [], users);
+      const channelName =
+        event.channel_type === 'messaging' ? getDirectChannelName(members, this.userID || '') : event.channel?.name;
+      const channel = {
+        ...event.channel,
+        members,
+        name: channelName,
+      };
+      const channelState: any = {
+        channel,
+        members: members,
+        messages: [],
+        pinned_messages: [],
+      };
+      const c = this.channel(event.channel_type || '', event.channel_id);
+      c.data = channel;
+      c._initializeState(channelState, 'latest');
+    }
     return postListenerCallbacks;
   }
 
@@ -1637,7 +1660,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     return userResponse;
   }
 
-  async getBatchUsers(users: string[], page?: number, page_size?: number): Promise<UsersResponse> {
+  async getBatchUsers(users: string[], page?: number, page_size?: number) {
     let project_id = this.projectId;
 
     const usersRepsonse = await this.post<UsersResponse>(
@@ -1648,7 +1671,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     this.state.updateUsers(usersRepsonse.data);
 
-    return usersRepsonse;
+    return usersRepsonse.data || [];
   }
   async searchUsers(page: number, page_size: number, name?: string): Promise<UsersResponse> {
     let project_id = this.projectId;
@@ -1812,6 +1835,20 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     const data = await this.post<QueryChannelsAPIResponse<ErmisChatGenerics>>(this.baseURL + '/channels', payload);
 
+    const memberIds =
+      Array.from(
+        new Set(data.channels.flatMap((c) => (c.channel.members || []).map((member: any) => member.user.id))),
+      ) || [];
+
+    const membersInfo = await this.getBatchUsers(memberIds);
+    data.channels.forEach((c) => {
+      c.channel.members = enrichWithUserInfo(c.channel.members, membersInfo);
+      c.messages = enrichWithUserInfo(c.messages, membersInfo);
+      c.read = enrichWithUserInfo(c.read || [], membersInfo);
+      c.channel.name =
+        c.channel.type === 'messaging' ? getDirectChannelName(c.channel.members, this.userID || '') : c.channel.name;
+    });
+
     this.dispatchEvent({
       type: 'channels.queried',
       queriedChannels: {
@@ -1822,9 +1859,11 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     const { channels, userIds } = await this.hydrateChannels(data.channels, stateOptions);
 
-    if (userIds.length > 0) {
-      await this.getBatchUsers(userIds);
-    }
+    console.log('-----channels-----', channels);
+
+    // if (userIds.length > 0) {
+    //   await this.getBatchUsers(userIds);
+    // }
 
     return channels;
   }

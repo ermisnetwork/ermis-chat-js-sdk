@@ -1,5 +1,12 @@
 import { ChannelState } from './channel_state';
-import { logChatPromiseExecution, normalizeQuerySort, randomId } from './utils';
+import {
+  enrichWithUserInfo,
+  getDirectChannelName,
+  getUserInfo,
+  logChatPromiseExecution,
+  normalizeQuerySort,
+  randomId,
+} from './utils';
 import { ErmisChat } from './client';
 import {
   APIResponse,
@@ -912,6 +919,15 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     const combined = { ...defaultOptions, ...options };
     const state = await this.query(combined, 'latest');
     this.initialized = true;
+    const users = Object.values(this.getClient().state.users);
+    state.channel.members = enrichWithUserInfo(state.channel.members, users);
+    state.channel.name =
+      state.channel.type === 'messaging'
+        ? getDirectChannelName(state.channel.members, this.getClient().userID || '')
+        : state.channel.name;
+    state.messages = enrichWithUserInfo(state.messages, users);
+    state.pinned_messages = state.pinned_messages ? enrichWithUserInfo(state.pinned_messages, users) : [];
+    state.read = enrichWithUserInfo(state.read || [], users);
     this.data = state.channel;
 
     this._client.logger('info', `channel:watch() - started watching channel ${this.cid}`, {
@@ -1164,6 +1180,15 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     }
 
     const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', payload);
+    const users = Object.values(this.getClient().state.users);
+    state.channel.members = enrichWithUserInfo(state.channel.members, users);
+    state.channel.name =
+      state.channel.type === 'messaging'
+        ? getDirectChannelName(state.channel.members, this.getClient().userID || '')
+        : state.channel.name;
+    state.messages = enrichWithUserInfo(state.messages, users);
+    state.pinned_messages = state.pinned_messages ? enrichWithUserInfo(state.pinned_messages, users) : [];
+    state.read = enrichWithUserInfo(state.read || [], users);
 
     // update the channel id if it was missing
 
@@ -1242,6 +1267,16 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
     const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', payload);
 
+    const users = Object.values(this.getClient().state.users);
+    state.channel.members = enrichWithUserInfo(state.channel.members, users);
+    state.channel.name =
+      state.channel.type === 'messaging'
+        ? getDirectChannelName(state.channel.members, this.getClient().userID || '')
+        : state.channel.name;
+    state.messages = enrichWithUserInfo(state.messages, users);
+    state.pinned_messages = state.pinned_messages ? enrichWithUserInfo(state.pinned_messages, users) : [];
+    state.read = enrichWithUserInfo(state.read || [], users);
+
     this.getClient()._addChannelConfig(state.channel);
 
     // add any messages to our channel state
@@ -1285,6 +1320,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       messages: { limit, id_lt: message_id },
     });
 
+    const users = Object.values(this.getClient().state.users);
+    state.messages = enrichWithUserInfo(state.messages, users);
     return state.messages;
   }
 
@@ -1301,6 +1338,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       messages: { limit, id_gt: message_id },
     });
 
+    const users = Object.values(this.getClient().state.users);
+    state.messages = enrichWithUserInfo(state.messages, users);
     return state.messages;
   }
 
@@ -1317,6 +1356,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       messages: { limit, id_gt: message_id },
     });
 
+    const users = Object.values(this.getClient().state.users);
+    state.messages = enrichWithUserInfo(state.messages, users);
     return state.messages;
   }
 
@@ -1621,6 +1662,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     );
 
     const channelState = channel.state;
+    const users = Object.values(this.getClient().state.users);
     switch (event.type) {
       case 'typing.start':
         if (event.user?.id) {
@@ -1634,10 +1676,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         break;
       case 'message.read':
         if (event.user?.id && event.created_at) {
+          const user = getUserInfo(event.user.id || '', users);
           channelState.read[event.user.id] = {
             last_read: new Date(event.created_at),
             last_read_message_id: event.last_read_message_id,
-            user: event.user,
+            user,
             unread_messages: 0,
           };
 
@@ -1689,6 +1732,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           /* if message belongs to current user, always assume timestamp is changed to filter it out and add again to avoid duplication */
           const ownMessage = event.user?.id === this.getClient().user?.id;
           const isThreadMessage = event.message.parent_id && !event.message.show_in_channel;
+          const user = getUserInfo(event.user?.id || '', users);
+          event.message.user = user;
+          event.user = user;
 
           if (this.state.isUpToDate || isThreadMessage) {
             channelState.addMessageSorted(event.message, ownMessage);
@@ -1723,24 +1769,31 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         }
         break;
       case 'message.updated':
-      // case 'message.undeleted':
-      //   if (event.message) {
-      //     this._extendEventWithOwnReactions(event);
-      //     channelState.addMessageSorted(event.message, false, false);
-      //     if (event.message.pinned) {
-      //       channelState.addPinnedMessage(event.message);
-      //     } else {
-      //       channelState.removePinnedMessage(event.message);
-      //     }
-      //   }
-      //   break;
+        // case 'message.undeleted':
+        if (event.message) {
+          const user = getUserInfo(event.user?.id || '', users);
+          event.user = user;
+          event.message.user = user;
+          this._extendEventWithOwnReactions(event);
+          channelState.addMessageSorted(event.message, false, false);
+          if (event.message.pinned) {
+            channelState.addPinnedMessage(event.message);
+          } else {
+            channelState.removePinnedMessage(event.message);
+          }
+        }
+        break;
       case 'message.pinned':
         if (event.message) {
+          const user = getUserInfo(event.user?.id || '', users);
+          event.message.user = user;
           channelState.addPinnedMessage(event.message);
         }
         break;
       case 'message.unpinned':
         if (event.message) {
+          const user = getUserInfo(event.user?.id || '', users);
+          event.message.user = user;
           channelState.removePinnedMessage(event.message);
         }
         break;
@@ -1774,6 +1827,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       case 'member.added':
       case 'member.updated':
         if (event.member?.user_id) {
+          const user = getUserInfo(event.member.user_id, users);
+          event.member.user = user;
           channelState.members[event.member.user_id] = event.member;
         }
         break;
@@ -1782,23 +1837,23 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           delete channelState.members[event.user.id];
         }
         break;
-      case 'notification.mark_unread': {
-        const ownMessage = event.user?.id === this.getClient().user?.id;
-        if (!(ownMessage && event.user)) break;
+      // case 'notification.mark_unread': {
+      //   const ownMessage = event.user?.id === this.getClient().user?.id;
+      //   if (!(ownMessage && event.user)) break;
 
-        const unreadCount = event.unread_messages ?? 0;
+      //   const unreadCount = event.unread_messages ?? 0;
 
-        channelState.read[event.user.id] = {
-          first_unread_message_id: event.first_unread_message_id,
-          last_read: new Date(event.last_read_at as string),
-          last_read_message_id: event.last_read_message_id,
-          user: event.user,
-          unread_messages: unreadCount,
-        };
+      //   channelState.read[event.user.id] = {
+      //     first_unread_message_id: event.first_unread_message_id,
+      //     last_read: new Date(event.last_read_at as string),
+      //     last_read_message_id: event.last_read_message_id,
+      //     user: event.user,
+      //     unread_messages: unreadCount,
+      //   };
 
-        channelState.unreadCount = unreadCount;
-        break;
-      }
+      //   channelState.unreadCount = unreadCount;
+      //   break;
+      // }
       case 'channel.updated':
         if (event.channel) {
           const isFrozenChanged = event.channel?.frozen !== undefined && event.channel.frozen !== channel.data?.frozen;
@@ -1812,38 +1867,44 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           };
         }
         break;
-      case 'poll.updated':
-        if (event.poll) {
-          channelState.updatePoll(event.poll, event.message?.id || '');
-        }
-        break;
-      case 'poll.vote_casted':
-        if (event.poll_vote && event.poll) {
-          channelState.addPollVote(event.poll_vote, event.poll, event.message?.id || '');
-        }
-        break;
-      case 'poll.vote_changed':
-        if (event.poll_vote && event.poll) {
-          channelState.updatePollVote(event.poll_vote, event.poll, event.message?.id || '');
-        }
-        break;
-      case 'poll.vote_removed':
-        if (event.poll_vote && event.poll) {
-          channelState.removePollVote(event.poll_vote, event.poll, event.message?.id || '');
-        }
-        break;
-      case 'poll.closed':
-        if (event.message) {
-          channelState.addMessageSorted(event.message, false, false);
-        }
-        break;
+      // case 'poll.updated':
+      //   if (event.poll) {
+      //     channelState.updatePoll(event.poll, event.message?.id || '');
+      //   }
+      //   break;
+      // case 'poll.vote_casted':
+      //   if (event.poll_vote && event.poll) {
+      //     channelState.addPollVote(event.poll_vote, event.poll, event.message?.id || '');
+      //   }
+      //   break;
+      // case 'poll.vote_changed':
+      //   if (event.poll_vote && event.poll) {
+      //     channelState.updatePollVote(event.poll_vote, event.poll, event.message?.id || '');
+      //   }
+      //   break;
+      // case 'poll.vote_removed':
+      //   if (event.poll_vote && event.poll) {
+      //     channelState.removePollVote(event.poll_vote, event.poll, event.message?.id || '');
+      //   }
+      //   break;
+      // case 'poll.closed':
+      //   if (event.message) {
+      //     channelState.addMessageSorted(event.message, false, false);
+      //   }
+      //   break;
       case 'pollchoice.new':
         if (event.message) {
+          const user = getUserInfo(event.user?.id || '', users);
+          event.message.user = user;
           channelState.addMessageSorted(event.message, false, false);
         }
         break;
       case 'reaction.new':
         if (event.message && event.reaction) {
+          const user = getUserInfo(event.user?.id || '', users);
+          event.message.user = user;
+          event.message.latest_reactions = enrichWithUserInfo(event.message.latest_reactions || [], users);
+          event.reaction.user = user;
           event.message = channelState.addReaction(event.reaction, event.message);
         }
         break;
@@ -1852,41 +1913,56 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           event.message = channelState.removeReaction(event.reaction, event.message);
         }
         break;
-      case 'reaction.updated':
-        if (event.reaction) {
-          // assuming reaction.updated is only called if enforce_unique is true
-          event.message = channelState.addReaction(event.reaction, event.message, true);
-        }
-        break;
-      case 'channel.hidden':
-        channel.data = { ...channel.data, hidden: true };
-        if (event.clear_history) {
-          channelState.clearMessages();
-        }
-        break;
-      case 'channel.visible':
-        channel.data = { ...channel.data, hidden: false };
-        break;
-      case 'user.banned':
-        if (!event.user?.id) break;
-        channelState.members[event.user.id] = {
-          ...(channelState.members[event.user.id] || {}),
-          shadow_banned: !!event.shadow,
-          banned: !event.shadow,
-          user: { ...(channelState.members[event.user.id]?.user || {}), ...event.user },
-        };
-        break;
-      case 'user.unbanned':
-        if (!event.user?.id) break;
-        channelState.members[event.user.id] = {
-          ...(channelState.members[event.user.id] || {}),
-          shadow_banned: false,
-          banned: false,
-          user: { ...(channelState.members[event.user.id]?.user || {}), ...event.user },
-        };
-        break;
+      // case 'reaction.updated':
+      //   if (event.reaction) {
+      //     // assuming reaction.updated is only called if enforce_unique is true
+      //     event.message = channelState.addReaction(event.reaction, event.message, true);
+      //   }
+      //   break;
+      // case 'channel.hidden':
+      //   channel.data = { ...channel.data, hidden: true };
+      //   if (event.clear_history) {
+      //     channelState.clearMessages();
+      //   }
+      //   break;
+      // case 'channel.visible':
+      //   channel.data = { ...channel.data, hidden: false };
+      //   break;
+      // case 'user.banned':
+      //   if (!event.user?.id) break;
+      //   channelState.members[event.user.id] = {
+      //     ...(channelState.members[event.user.id] || {}),
+      //     shadow_banned: !!event.shadow,
+      //     banned: !event.shadow,
+      //     user: { ...(channelState.members[event.user.id]?.user || {}), ...event.user },
+      //   };
+      //   break;
+      // case 'user.unbanned':
+      //   if (!event.user?.id) break;
+      //   channelState.members[event.user.id] = {
+      //     ...(channelState.members[event.user.id] || {}),
+      //     shadow_banned: false,
+      //     banned: false,
+      //     user: { ...(channelState.members[event.user.id]?.user || {}), ...event.user },
+      //   };
+      //   break;
       case 'notification.invite_accepted':
+        if (event.member?.user_id) {
+          if (event.member.user_id === this.getClient().user?.id) {
+            channelState.membership = event.member;
+            this.state.membership = event.member;
+          }
 
+          const user = getUserInfo(event.member.user_id, users);
+          event.member.user = user;
+          channelState.members[event.member.user_id] = event.member;
+        }
+        break;
+      case 'notification.invite_rejected':
+        if (event.member?.user_id) {
+          delete channelState.members[event.member.user_id];
+        }
+        break;
       default:
     }
 

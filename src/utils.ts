@@ -412,3 +412,48 @@ function maybeGetReactionGroupsFallback(
 
   return null;
 }
+
+export const enrichWithUserInfo = (items: any[], users: any[]) => {
+  if (items.length === 0) return [];
+
+  if (users.length === 0) {
+    return items.map((item) => {
+      item.user = { id: item.user?.id, name: item.user?.id, avatar: '' };
+      return item;
+    });
+  }
+
+  return items.map((item) => {
+    const userId = item.user?.id;
+    const user = users.find((u) => u.id === userId);
+    if (user) {
+      item.user = { id: user.id, name: user.name || user.id, avatar: user.avatar || '' };
+    }
+    return item;
+  });
+};
+
+export const getUserInfo = (id: string, users: any[]) => {
+  if (users.length === 0) {
+    return {
+      id,
+      name: id,
+      avatar: '',
+    };
+  }
+
+  const user = users.find((u) => u.id === id);
+  return {
+    id,
+    name: user?.name || id,
+    avatar: user?.avatar || '',
+  };
+};
+
+export const getDirectChannelName = (members: any[], currentUserId: string) => {
+  const otherMember = members.find((member) => member.user.id !== currentUserId);
+  if (otherMember) {
+    return otherMember.user.name || otherMember.user.id;
+  }
+  return 'Empty channel';
+};
