@@ -674,6 +674,8 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     }
 
     this.setConnectionMessage(null);
+    this.cid = '';
+    this.callType = '';
   }
 
   private destroy() {
@@ -684,6 +686,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   public async createCall(callType: string, cid: string) {
+    this.cid = cid;
     return await this._sendSignal({ action: CallAction.CREATE_CALL, cid, is_video: callType === 'video' });
   }
 
