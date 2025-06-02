@@ -755,7 +755,6 @@ export type ReadResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultG
   last_read_message_id?: string;
   unread_messages?: number;
   last_send?: string;
-  is_from_cache?: boolean;
 };
 
 export type SearchAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {

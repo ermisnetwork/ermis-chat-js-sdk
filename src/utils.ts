@@ -11,6 +11,7 @@ import {
   ReactionGroupResponse,
 } from './types';
 import { AxiosRequestConfig } from 'axios';
+import { ErmisChat } from 'client';
 
 /**
  * logChatPromiseExecution - utility function for logging the execution of a promise..
@@ -425,10 +426,36 @@ export const enrichWithUserInfo = (items: any[], users: any[]) => {
 
   return items.map((item) => {
     const userId = item.user?.id;
+    const lastestReactionMsg = item?.latest_reactions;
+    const quotedMsg = item?.quoted_message;
     const user = users.find((u) => u.id === userId);
     if (user) {
       item.user = { id: user.id, name: user.name || user.id, avatar: user.avatar || '' };
     }
+
+    if (lastestReactionMsg) {
+      item.latest_reactions = lastestReactionMsg.map((reaction: any) => {
+        const reactionUser = users.find((u) => u.id === reaction.user_id);
+        return {
+          ...reaction,
+          user: {
+            id: reactionUser?.id || reaction.user_id,
+            name: reactionUser?.name || reaction.user_id,
+            avatar: reactionUser?.avatar || '',
+          },
+        };
+      });
+    }
+
+    if (quotedMsg) {
+      const quotedUser = users.find((u) => u.id === quotedMsg.user?.id);
+      item.quoted_message.user = {
+        id: quotedUser?.id || quotedMsg.user?.id,
+        name: quotedUser?.name || quotedMsg.user?.id,
+        avatar: quotedUser?.avatar || '',
+      };
+    }
+
     return item;
   });
 };
@@ -451,9 +478,47 @@ export const getUserInfo = (id: string, users: any[]) => {
 };
 
 export const getDirectChannelName = (members: any[], currentUserId: string) => {
+  if (members.length === 0) {
+    return 'Empty channel';
+  }
+
   const otherMember = members.find((member) => member.user.id !== currentUserId);
   if (otherMember) {
     return otherMember.user.name || otherMember.user.id;
   }
   return 'Empty channel';
 };
+
+export const getDirectChannelImage = (members: any[], currentUserId: string) => {
+  if (members.length === 0) {
+    return '';
+  }
+
+  const otherMember = members.find((member) => member.user.id !== currentUserId);
+  if (otherMember) {
+    return otherMember.user.avatar || '';
+  }
+  return '';
+};
+
+/**
+ * Ensure all members' user info are loaded in state.users.
+ * @param client ErmisChat client instance
+ * @param members Array of channel members (each member must have user?.id)
+ */
+export async function ensureMembersUserInfoLoaded<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics>(
+  client: ErmisChat<ErmisChatGenerics>,
+  members: any[],
+) {
+  // Get all memberIds
+  const memberIds = (members || []).map((m: any) => m.user?.id).filter((id: string | undefined) => !!id);
+
+  // Filter out ids that do not exist in users
+  const users = client.state.users;
+  const missingUserIds = memberIds.filter((id: string) => !users[id]);
+
+  // If there are users missing, fetch and update them into state
+  if (missingUserIds.length > 0) {
+    await client.getBatchUsers(missingUserIds);
+  }
+}

@@ -1,6 +1,8 @@
 import { ChannelState } from './channel_state';
 import {
   enrichWithUserInfo,
+  ensureMembersUserInfoLoaded,
+  getDirectChannelImage,
   getDirectChannelName,
   getUserInfo,
   logChatPromiseExecution,
@@ -152,9 +154,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {ErmisChat<ErmisChatGenerics>}
    */
   getClient(): ErmisChat<ErmisChatGenerics> {
-    if (this.disconnected === true) {
-      throw Error(`You can't use a channel after client.disconnect() was called`);
-    }
+    // if (this.disconnected === true) {
+    //   throw Error(`You can't use a channel after client.disconnect() was called`);
+    // }
     return this._client;
   }
 
@@ -618,12 +620,24 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   async searchMessage(search_term: string, offset: number) {
-    return await this.getClient().post(this.getClient().baseURL + `/channels/search`, {
+    const response: any = await this.getClient().post(this.getClient().baseURL + `/channels/search`, {
       cid: this.cid,
       search_term,
       offset,
       limit: 25,
     });
+
+    if (!response || response?.search_result?.messages.length === 0) {
+      return null;
+    }
+
+    return {
+      ...response?.search_result,
+      messages: response?.search_result?.messages.map((message: any) => {
+        const user = getUserInfo(message.user_id, Object.values(this.getClient().state.users));
+        return { ...message, user };
+      }),
+    };
   }
 
   /**
@@ -919,12 +933,20 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     const combined = { ...defaultOptions, ...options };
     const state = await this.query(combined, 'latest');
     this.initialized = true;
+    // Ensure all members' user info are loaded in state.users
+    await ensureMembersUserInfoLoaded(this.getClient(), state.channel.members);
+
+    // Get the latest users after updating
     const users = Object.values(this.getClient().state.users);
     state.channel.members = enrichWithUserInfo(state.channel.members, users);
     state.channel.name =
       state.channel.type === 'messaging'
         ? getDirectChannelName(state.channel.members, this.getClient().userID || '')
         : state.channel.name;
+    state.channel.image =
+      state.channel.type === 'messaging'
+        ? getDirectChannelImage(state.channel.members, this.getClient().userID || '')
+        : state.channel.image;
     state.messages = enrichWithUserInfo(state.messages, users);
     state.pinned_messages = state.pinned_messages ? enrichWithUserInfo(state.pinned_messages, users) : [];
     state.read = enrichWithUserInfo(state.read || [], users);
@@ -1186,6 +1208,10 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       state.channel.type === 'messaging'
         ? getDirectChannelName(state.channel.members, this.getClient().userID || '')
         : state.channel.name;
+    state.channel.image =
+      state.channel.type === 'messaging'
+        ? getDirectChannelImage(state.channel.members, this.getClient().userID || '')
+        : state.channel.image;
     state.messages = enrichWithUserInfo(state.messages, users);
     state.pinned_messages = state.pinned_messages ? enrichWithUserInfo(state.pinned_messages, users) : [];
     state.read = enrichWithUserInfo(state.read || [], users);
@@ -1666,6 +1692,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     switch (event.type) {
       case 'typing.start':
         if (event.user?.id) {
+          const user = getUserInfo(event.user.id || '', users);
+          event.user = user;
           channelState.typing[event.user.id] = event;
         }
         break;
@@ -1677,6 +1705,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       case 'message.read':
         if (event.user?.id && event.created_at) {
           const user = getUserInfo(event.user.id || '', users);
+          event.user = user;
           channelState.read[event.user.id] = {
             last_read: new Date(event.created_at),
             last_read_message_id: event.last_read_message_id,
@@ -1732,9 +1761,14 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           /* if message belongs to current user, always assume timestamp is changed to filter it out and add again to avoid duplication */
           const ownMessage = event.user?.id === this.getClient().user?.id;
           const isThreadMessage = event.message.parent_id && !event.message.show_in_channel;
-          const user = getUserInfo(event.user?.id || '', users);
-          event.message.user = user;
-          event.user = user;
+          const userEvent = getUserInfo(event.user?.id || '', users);
+          const userMsg = getUserInfo(event.user?.id || '', users);
+          event.message.user = userMsg;
+          if (event.message?.quoted_message) {
+            const quotedUser = getUserInfo(event.message.quoted_message.user?.id || '', users);
+            event.message.quoted_message.user = quotedUser;
+          }
+          event.user = userEvent;
 
           if (this.state.isUpToDate || isThreadMessage) {
             channelState.addMessageSorted(event.message, ownMessage);
@@ -1771,9 +1805,10 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       case 'message.updated':
         // case 'message.undeleted':
         if (event.message) {
-          const user = getUserInfo(event.user?.id || '', users);
-          event.user = user;
-          event.message.user = user;
+          const userEvent = getUserInfo(event.user?.id || '', users);
+          const userMsg = getUserInfo(event.message.user?.id || '', users);
+          event.user = userEvent;
+          event.message.user = userMsg;
           this._extendEventWithOwnReactions(event);
           channelState.addMessageSorted(event.message, false, false);
           if (event.message.pinned) {
@@ -1785,14 +1820,14 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         break;
       case 'message.pinned':
         if (event.message) {
-          const user = getUserInfo(event.user?.id || '', users);
+          const user = getUserInfo(event.message.user?.id || '', users);
           event.message.user = user;
           channelState.addPinnedMessage(event.message);
         }
         break;
       case 'message.unpinned':
         if (event.message) {
-          const user = getUserInfo(event.user?.id || '', users);
+          const user = getUserInfo(event.message.user?.id || '', users);
           event.message.user = user;
           channelState.removePinnedMessage(event.message);
         }
@@ -1894,17 +1929,18 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       //   break;
       case 'pollchoice.new':
         if (event.message) {
-          const user = getUserInfo(event.user?.id || '', users);
+          const user = getUserInfo(event.message.user?.id || '', users);
           event.message.user = user;
           channelState.addMessageSorted(event.message, false, false);
         }
         break;
       case 'reaction.new':
         if (event.message && event.reaction) {
-          const user = getUserInfo(event.user?.id || '', users);
-          event.message.user = user;
+          const userMsg = getUserInfo(event.message.user?.id || '', users);
+          const userReaction = getUserInfo(event.reaction.user?.id || '', users);
+          event.message.user = userMsg;
           event.message.latest_reactions = enrichWithUserInfo(event.message.latest_reactions || [], users);
-          event.reaction.user = user;
+          event.reaction.user = userReaction;
           event.message = channelState.addReaction(event.reaction, event.message);
         }
         break;
@@ -1946,21 +1982,43 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       //     user: { ...(channelState.members[event.user.id]?.user || {}), ...event.user },
       //   };
       //   break;
+      case 'member.joined':
       case 'notification.invite_accepted':
         if (event.member?.user_id) {
+          const user = getUserInfo(event.member.user_id, users);
+          event.member.user = user;
+
           if (event.member.user_id === this.getClient().user?.id) {
             channelState.membership = event.member;
             this.state.membership = event.member;
           }
 
-          const user = getUserInfo(event.member.user_id, users);
-          event.member.user = user;
           channelState.members[event.member.user_id] = event.member;
+          this.offlineMode = true;
+          this.initialized = true;
         }
         break;
       case 'notification.invite_rejected':
         if (event.member?.user_id) {
           delete channelState.members[event.member.user_id];
+
+          // channel.data = {
+          //   ...channel.data,
+          //   member_count: Number(channel.data?.member_count) - 1,
+          //   members: channel.data?.members?.filter((m: any) => m.user_id !== event.member?.user_id) || [],
+          // } as ChannelAPIResponse<ErmisChatGenerics>['channel'];
+        }
+        break;
+      case 'member.promoted':
+      case 'member.demoted':
+      case 'member.banned':
+      case 'member.unbanned':
+      case 'member.blocked':
+      case 'member.unblocked':
+        if (event.member?.user_id) {
+          const user = getUserInfo(event.member.user_id, users);
+          event.member.user = user;
+          channelState.members[event.member.user_id] = event.member;
         }
         break;
       default:
@@ -2094,7 +2152,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           unread_messages: read.unread_messages ?? 0,
           user: read.user,
           last_send: read.last_send,
-          is_from_cache: read.is_from_cache,
         };
 
         if (read.user.id === user?.id) {

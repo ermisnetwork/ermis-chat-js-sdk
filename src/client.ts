@@ -20,6 +20,8 @@ import {
   axiosParamsSerializer,
   chatCodes,
   enrichWithUserInfo,
+  ensureMembersUserInfoLoaded,
+  getDirectChannelImage,
   getDirectChannelName,
   isFunction,
   isOnline,
@@ -566,7 +568,10 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
 
     try {
-      return await this.setUserPromise;
+      const result = await this.setUserPromise;
+      // Call SSE after successful connect
+      await this.connectToSSE();
+      return result;
     } catch (err) {
       if (this.persistUserOnConnectionFailure) {
         // cleanup client to allow the user to retry connectUser again
@@ -1164,10 +1169,34 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   dispatchEvent = (event: Event<ErmisChatGenerics>) => {
     if (!event.received_at) event.received_at = new Date();
 
-    // client event handlers
+    // If the event is channel.created, handle it asynchronously
+    if (event.type === 'channel.created') {
+      this._handleChannelCreatedEvent(event).then(() => {
+        this._afterDispatchEvent(event);
+      });
+    } else {
+      const postListenerCallbacks = this._handleClientEvent(event);
+
+      // channel event handlers
+      const cid = event.cid;
+      const channel = cid ? this.activeChannels[cid] : undefined;
+      if (channel) {
+        channel._handleChannelEvent(event);
+      }
+
+      this._callClientListeners(event);
+
+      if (channel) {
+        channel._callChannelListeners(event);
+      }
+
+      postListenerCallbacks.forEach((c) => c());
+    }
+  };
+
+  _afterDispatchEvent(event: Event<ErmisChatGenerics>) {
     const postListenerCallbacks = this._handleClientEvent(event);
 
-    // channel event handlers
     const cid = event.cid;
     const channel = cid ? this.activeChannels[cid] : undefined;
     if (channel) {
@@ -1181,7 +1210,36 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     }
 
     postListenerCallbacks.forEach((c) => c());
-  };
+  }
+
+  private async _handleChannelCreatedEvent(event: Event<ErmisChatGenerics>) {
+    const members = event.channel?.members || [];
+    // Ensure all members' user info are loaded in state.users
+    await ensureMembersUserInfoLoaded(this, members);
+
+    // Get the latest users after updating
+    const updatedUsers = Object.values(this.state.users);
+
+    const enrichedMembers = enrichWithUserInfo(members, updatedUsers);
+    const channelName =
+      event.channel_type === 'messaging'
+        ? getDirectChannelName(enrichedMembers, this.userID || '')
+        : event.channel?.name;
+    const channel = {
+      ...event.channel,
+      members: enrichedMembers,
+      name: channelName,
+    };
+    const channelState: any = {
+      channel,
+      members: enrichedMembers,
+      messages: [],
+      pinned_messages: [],
+    };
+    const c = this.channel(event.channel_type || '', event.channel_id);
+    c.data = channel;
+    c._initializeState(channelState, 'latest');
+  }
 
   handleEvent = (messageEvent: WebSocket.MessageEvent) => {
     // dispatch the event to the channel listeners
@@ -1376,26 +1434,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       //TODO handle channel list and invited channels here
     }
 
-    if (event.type === 'channel.created') {
-      const users = Object.values(this.state.users);
-      const members = enrichWithUserInfo(event.channel?.members || [], users);
-      const channelName =
-        event.channel_type === 'messaging' ? getDirectChannelName(members, this.userID || '') : event.channel?.name;
-      const channel = {
-        ...event.channel,
-        members,
-        name: channelName,
-      };
-      const channelState: any = {
-        channel,
-        members: members,
-        messages: [],
-        pinned_messages: [],
-      };
-      const c = this.channel(event.channel_type || '', event.channel_id);
-      c.data = channel;
-      c._initializeState(channelState, 'latest');
-    }
     return postListenerCallbacks;
   }
 
@@ -1571,6 +1609,27 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         }
 
         this.state.updateUser(user);
+
+        const userInfo = {
+          id: user.id,
+          name: user.name ? user.name : user.id,
+          avatar: user?.avatar || '',
+        };
+
+        this._updateMemberWatcherReferences(userInfo);
+        this._updateUserMessageReferences(userInfo);
+
+        Object.values(this.activeChannels).forEach((channel) => {
+          if (channel.data?.type === 'messaging' && Object.keys(channel.state.members).length === 2) {
+            const otherMember = Object.values(channel.state.members).find((member) => member.user?.id !== this.userID);
+            if (otherMember && otherMember.user?.id === user.id) {
+              // Cập nhật tên và avatar channel theo user vừa đổi thông tin
+              channel.data.name = user.name || user.id;
+              channel.data.image = user.avatar || '';
+            }
+          }
+        });
+
         if (onCallBack) {
           onCallBack(data);
         }
@@ -1683,7 +1742,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       project_id,
     });
 
-    this.state.updateUsers(usersResponse.data);
+    // this.state.updateUsers(usersResponse.data);
 
     return usersResponse;
   }
@@ -1847,6 +1906,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       c.read = enrichWithUserInfo(c.read || [], membersInfo);
       c.channel.name =
         c.channel.type === 'messaging' ? getDirectChannelName(c.channel.members, this.userID || '') : c.channel.name;
+      c.channel.image =
+        c.channel.type === 'messaging' ? getDirectChannelImage(c.channel.members, this.userID || '') : c.channel.image;
     });
 
     this.dispatchEvent({
@@ -1858,8 +1919,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     });
 
     const { channels, userIds } = await this.hydrateChannels(data.channels, stateOptions);
-
-    console.log('-----channels-----', channels);
 
     // if (userIds.length > 0) {
     //   await this.getBatchUsers(userIds);

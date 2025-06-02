@@ -25,7 +25,6 @@ type ChannelReadStatus<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     first_unread_message_id?: string;
     last_read_message_id?: string;
     last_send?: string;
-    is_from_cache?: boolean;
   }
 >;
 
@@ -492,94 +491,94 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
   };
 
   // this handles the case when vote on poll is changed
-  updatePollVote = (
-    pollVote: PollVote<ErmisChatGenerics>,
-    poll: PollResponse<ErmisChatGenerics>,
-    messageId: string,
-  ) => {
-    const message = this.findMessage(messageId);
-    if (!message) return;
+  // updatePollVote = (
+  //   pollVote: PollVote<ErmisChatGenerics>,
+  //   poll: PollResponse<ErmisChatGenerics>,
+  //   messageId: string,
+  // ) => {
+  //   const message = this.findMessage(messageId);
+  //   if (!message) return;
 
-    if (message.poll_id !== pollVote.poll_id) return;
+  //   if (message.poll_id !== pollVote.poll_id) return;
 
-    const updatedPoll = { ...poll };
-    let ownVotes = [...(message.poll?.own_votes || [])];
+  //   const updatedPoll = { ...poll };
+  //   let ownVotes = [...(message.poll?.own_votes || [])];
 
-    if (pollVote.user_id === this._channel.getClient().userID) {
-      if (pollVote.option_id && poll.enforce_unique_vote) {
-        // remove all previous votes where option_id is not empty
-        ownVotes = ownVotes.filter((vote) => !vote.option_id);
-      } else if (pollVote.answer_text) {
-        // remove all previous votes where option_id is empty
-        ownVotes = ownVotes.filter((vote) => vote.answer_text);
-      }
+  //   if (pollVote.user_id === this._channel.getClient().userID) {
+  //     if (pollVote.option_id && poll.enforce_unique_vote) {
+  //       // remove all previous votes where option_id is not empty
+  //       ownVotes = ownVotes.filter((vote) => !vote.option_id);
+  //     } else if (pollVote.answer_text) {
+  //       // remove all previous votes where option_id is empty
+  //       ownVotes = ownVotes.filter((vote) => vote.answer_text);
+  //     }
 
-      ownVotes.push(pollVote);
-    }
+  //     ownVotes.push(pollVote);
+  //   }
 
-    updatedPoll.own_votes = ownVotes as PollVote<ErmisChatGenerics>[];
-    const newMessage = { ...message, poll: updatedPoll };
+  //   updatedPoll.own_votes = ownVotes as PollVote<ErmisChatGenerics>[];
+  //   const newMessage = { ...message, poll: updatedPoll };
 
-    this.addMessageSorted((newMessage as unknown) as MessageResponse<ErmisChatGenerics>, false, false);
-  };
+  //   this.addMessageSorted((newMessage as unknown) as MessageResponse<ErmisChatGenerics>, false, false);
+  // };
 
-  addPollVote = (pollVote: PollVote<ErmisChatGenerics>, poll: PollResponse<ErmisChatGenerics>, messageId: string) => {
-    const message = this.findMessage(messageId);
-    if (!message) return;
+  // addPollVote = (pollVote: PollVote<ErmisChatGenerics>, poll: PollResponse<ErmisChatGenerics>, messageId: string) => {
+  //   const message = this.findMessage(messageId);
+  //   if (!message) return;
 
-    if (message.poll_id !== pollVote.poll_id) return;
+  //   if (message.poll_id !== pollVote.poll_id) return;
 
-    const updatedPoll = { ...poll };
-    const ownVotes = [...(message.poll?.own_votes || [])];
+  //   const updatedPoll = { ...poll };
+  //   const ownVotes = [...(message.poll?.own_votes || [])];
 
-    if (pollVote.user_id === this._channel.getClient().userID) {
-      ownVotes.push(pollVote);
-    }
+  //   if (pollVote.user_id === this._channel.getClient().userID) {
+  //     ownVotes.push(pollVote);
+  //   }
 
-    updatedPoll.own_votes = ownVotes as PollVote<ErmisChatGenerics>[];
-    const newMessage = { ...message, poll: updatedPoll };
+  //   updatedPoll.own_votes = ownVotes as PollVote<ErmisChatGenerics>[];
+  //   const newMessage = { ...message, poll: updatedPoll };
 
-    this.addMessageSorted((newMessage as unknown) as MessageResponse<ErmisChatGenerics>, false, false);
-  };
+  //   this.addMessageSorted((newMessage as unknown) as MessageResponse<ErmisChatGenerics>, false, false);
+  // };
 
-  removePollVote = (
-    pollVote: PollVote<ErmisChatGenerics>,
-    poll: PollResponse<ErmisChatGenerics>,
-    messageId: string,
-  ) => {
-    const message = this.findMessage(messageId);
-    if (!message) return;
+  // removePollVote = (
+  //   pollVote: PollVote<ErmisChatGenerics>,
+  //   poll: PollResponse<ErmisChatGenerics>,
+  //   messageId: string,
+  // ) => {
+  //   const message = this.findMessage(messageId);
+  //   if (!message) return;
 
-    if (message.poll_id !== pollVote.poll_id) return;
+  //   if (message.poll_id !== pollVote.poll_id) return;
 
-    const updatedPoll = { ...poll };
-    const ownVotes = [...(message.poll?.own_votes || [])];
-    if (pollVote.user_id === this._channel.getClient().userID) {
-      const index = ownVotes.findIndex((vote) => vote.option_id === pollVote.option_id);
-      if (index > -1) {
-        ownVotes.splice(index, 1);
-      }
-    }
+  //   const updatedPoll = { ...poll };
+  //   const ownVotes = [...(message.poll?.own_votes || [])];
+  //   if (pollVote.user_id === this._channel.getClient().userID) {
+  //     const index = ownVotes.findIndex((vote) => vote.option_id === pollVote.option_id);
+  //     if (index > -1) {
+  //       ownVotes.splice(index, 1);
+  //     }
+  //   }
 
-    updatedPoll.own_votes = ownVotes as PollVote<ErmisChatGenerics>[];
+  //   updatedPoll.own_votes = ownVotes as PollVote<ErmisChatGenerics>[];
 
-    const newMessage = { ...message, poll: updatedPoll };
-    this.addMessageSorted((newMessage as unknown) as MessageResponse<ErmisChatGenerics>, false, false);
-  };
+  //   const newMessage = { ...message, poll: updatedPoll };
+  //   this.addMessageSorted((newMessage as unknown) as MessageResponse<ErmisChatGenerics>, false, false);
+  // };
 
-  updatePoll = (poll: PollResponse<ErmisChatGenerics>, messageId: string) => {
-    const message = this.findMessage(messageId);
-    if (!message) return;
+  // updatePoll = (poll: PollResponse<ErmisChatGenerics>, messageId: string) => {
+  //   const message = this.findMessage(messageId);
+  //   if (!message) return;
 
-    const updatedPoll = {
-      ...poll,
-      own_votes: [...(message.poll?.own_votes || [])],
-    };
+  //   const updatedPoll = {
+  //     ...poll,
+  //     own_votes: [...(message.poll?.own_votes || [])],
+  //   };
 
-    const newMessage = { ...message, poll: updatedPoll };
+  //   const newMessage = { ...message, poll: updatedPoll };
 
-    this.addMessageSorted((newMessage as unknown) as MessageResponse<ErmisChatGenerics>, false, false);
-  };
+  //   this.addMessageSorted((newMessage as unknown) as MessageResponse<ErmisChatGenerics>, false, false);
+  // };
 
   /**
    * Updates the message.user property with updated user object, for messages.
@@ -593,17 +592,28 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
     ) => {
       for (let i = 0; i < messages.length; i++) {
         const m = messages[i];
+        const latestReactions = m?.latest_reactions || [];
         if (m.user?.id === user.id) {
-          messages[i] = { ...m, user };
+          messages[i] = {
+            ...m,
+            user: m.user?.id === user.id ? user : m.user,
+          };
+        }
+
+        if (latestReactions && latestReactions.some((r) => r.user?.id === user.id)) {
+          messages[i] = {
+            ...m,
+            latest_reactions: latestReactions.map((r) => (r.user?.id === user.id ? { ...r, user } : r)),
+          };
         }
       }
     };
 
     this.messageSets.forEach((set) => _updateUserMessages(set.messages, user));
 
-    for (const parentId in this.threads) {
-      _updateUserMessages(this.threads[parentId], user);
-    }
+    // for (const parentId in this.threads) {
+    //   _updateUserMessages(this.threads[parentId], user);
+    // }
 
     _updateUserMessages(this.pinnedMessages, user);
   };
