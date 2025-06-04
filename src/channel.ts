@@ -1340,7 +1340,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     let queryURL = `${this.getClient().baseURL}/channels/${this.type}/${this.id}`;
 
     const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', {
-      data: this._data,
+      // data: this._data,
       state: true,
       project_id,
       messages: { limit, id_lt: message_id },
@@ -1358,7 +1358,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     let queryURL = `${this.getClient().baseURL}/channels/${this.type}/${this.id}`;
 
     const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', {
-      data: this._data,
+      // data: this._data,
       state: true,
       project_id,
       messages: { limit, id_gt: message_id },
@@ -1376,7 +1376,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     let queryURL = `${this.getClient().baseURL}/channels/${this.type}/${this.id}`;
 
     const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', {
-      data: this._data,
+      // data: this._data,
       state: true,
       project_id,
       messages: { limit, id_gt: message_id },
