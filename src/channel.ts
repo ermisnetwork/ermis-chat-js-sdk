@@ -557,12 +557,22 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   /**
    * rejectInvite - reject invitation to the channel
    *
-   * @param {InviteOptions<ErmisChatGenerics>} [options] The object to update the custom properties of this channel with
    *
    * @return {Promise<UpdateChannelAPIResponse<ErmisChatGenerics>>} The server response
    */
-  async rejectInvite(options: InviteOptions<ErmisChatGenerics> = {}) {
+  async rejectInvite() {
     const url = this.getClient().baseURL + `/invites/${this.type}/${this.id}/reject`;
+    return this.getClient().post<APIResponse>(url);
+  }
+
+  /**
+   * skipInvite - skip invitation to the direct channel
+   *
+   *
+   * @return {Promise<UpdateChannelAPIResponse<ErmisChatGenerics>>} The server response
+   */
+  async skipInvite() {
+    const url = this.getClient().baseURL + `/invites/${this.type}/${this.id}/skip`;
     return this.getClient().post<APIResponse>(url);
   }
 
@@ -2009,6 +2019,22 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           // } as ChannelAPIResponse<ErmisChatGenerics>['channel'];
         }
         break;
+      case 'notification.invite_messaging_skipped':
+        if (event.member?.user_id) {
+          const user = getUserInfo(event.member.user_id, users);
+          event.member.user = user;
+
+          if (event.member.user_id === this.getClient().user?.id) {
+            channelState.membership = event.member;
+            this.state.membership = event.member;
+          }
+
+          channelState.members[event.member.user_id] = event.member;
+
+          this.offlineMode = true;
+          this.initialized = true;
+        }
+        break;
       case 'member.promoted':
       case 'member.demoted':
       case 'member.banned':
@@ -2019,6 +2045,16 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           const user = getUserInfo(event.member.user_id, users);
           event.member.user = user;
           channelState.members[event.member.user_id] = event.member;
+        }
+        break;
+      case 'channel.pinned':
+        if (channel.data) {
+          channel.data.is_pinned = true;
+        }
+        break;
+      case 'channel.unpinned':
+        if (channel.data) {
+          channel.data.is_pinned = false;
         }
         break;
       default:

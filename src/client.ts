@@ -1333,51 +1333,51 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    *
    * @param {Event} event
    */
-  _handleUserEvent = (event: Event<ErmisChatGenerics>) => {
-    if (!event.user) {
-      return;
-    }
+  // _handleUserEvent = (event: Event<ErmisChatGenerics>) => {
+  //   if (!event.user) {
+  //     return;
+  //   }
 
-    /** update the client.state with any changes to users */
-    if (event.type === 'user.presence.changed' || event.type === 'user.updated') {
-      if (event.user.id === this.userID) {
-        const user = { ...(this.user || {}) };
-        const _user = { ...(this._user || {}) };
+  //   /** update the client.state with any changes to users */
+  //   if (event.type === 'user.presence.changed' || event.type === 'user.updated') {
+  //     if (event.user.id === this.userID) {
+  //       const user = { ...(this.user || {}) };
+  //       const _user = { ...(this._user || {}) };
 
-        // Remove deleted properties from user objects.
-        for (const key in this.user) {
-          if (key in event.user || isOwnUserBaseProperty(key)) {
-            continue;
-          }
+  //       // Remove deleted properties from user objects.
+  //       for (const key in this.user) {
+  //         if (key in event.user || isOwnUserBaseProperty(key)) {
+  //           continue;
+  //         }
 
-          delete user[key];
-          delete _user[key];
-        }
+  //         delete user[key];
+  //         delete _user[key];
+  //       }
 
-        /** Updating only available properties in _user object. */
-        for (const key in event.user) {
-          if (_user && key in _user) {
-            _user[key] = event.user[key];
-          }
-        }
+  //       /** Updating only available properties in _user object. */
+  //       for (const key in event.user) {
+  //         if (_user && key in _user) {
+  //           _user[key] = event.user[key];
+  //         }
+  //       }
 
-        // @ts-expect-error
-        this._user = { ..._user };
-        this.user = { ...user, ...event.user };
-      }
+  //       // @ts-expect-error
+  //       this._user = { ..._user };
+  //       this.user = { ...user, ...event.user };
+  //     }
 
-      this.state.updateUser(event.user);
-      this._updateMemberWatcherReferences(event.user);
-    }
+  //     this.state.updateUser(event.user);
+  //     this._updateMemberWatcherReferences(event.user);
+  //   }
 
-    if (event.type === 'user.updated') {
-      this._updateUserMessageReferences(event.user);
-    }
+  //   if (event.type === 'user.updated') {
+  //     this._updateUserMessageReferences(event.user);
+  //   }
 
-    if (event.type === 'user.deleted' && event.user.deleted_at && (event.mark_messages_deleted || event.hard_delete)) {
-      this._deleteUserMessageReference(event.user, event.hard_delete);
-    }
-  };
+  //   if (event.type === 'user.deleted' && event.user.deleted_at && (event.mark_messages_deleted || event.hard_delete)) {
+  //     this._deleteUserMessageReference(event.user, event.hard_delete);
+  //   }
+  // };
 
   _handleClientEvent(event: Event<ErmisChatGenerics>) {
     const client = this;
@@ -1387,9 +1387,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       event,
     });
 
-    if (event.type === 'user.presence.changed' || event.type === 'user.updated' || event.type === 'user.deleted') {
-      this._handleUserEvent(event);
-    }
+    // if (event.type === 'user.presence.changed' || event.type === 'user.updated' || event.type === 'user.deleted') {
+    //   this._handleUserEvent(event);
+    // }
 
     if (event.type === 'health.check' && event.me) {
       client.user = event.me;
@@ -1410,10 +1410,10 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     //   this.mutedUsers = event.me.mutes;
     // }
 
-    if (event.type === 'notification.mark_read' && event.unread_channels === 0) {
-      const activeChannelKeys = Object.keys(this.activeChannels);
-      activeChannelKeys.forEach((activeChannelKey) => (this.activeChannels[activeChannelKey].state.unreadCount = 0));
-    }
+    // if (event.type === 'notification.mark_read' && event.unread_channels === 0) {
+    //   const activeChannelKeys = Object.keys(this.activeChannels);
+    //   activeChannelKeys.forEach((activeChannelKey) => (this.activeChannels[activeChannelKey].state.unreadCount = 0));
+    // }
 
     if (
       (event.type === 'channel.deleted' ||
@@ -2021,7 +2021,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     const userIds: string[] = [];
     for (const channelState of channelsFromApi) {
       const c = this.channel(channelState.channel.type, channelState.channel.id);
-      c.data = channelState.channel;
+      c.data = { ...channelState.channel, is_pinned: channelState.is_pinned || false };
       c.offlineMode = offlineMode;
       c.initialized = !offlineMode;
 
@@ -2093,6 +2093,14 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       limit: limit,
       offset: offset,
     });
+  }
+
+  async pinChannel(channelType: string, channelId: string) {
+    return await this.post<APIResponse>(this.baseURL + `/channels/${channelType}/${channelId}/pin`);
+  }
+
+  async unpinChannel(channelType: string, channelId: string) {
+    return await this.post<APIResponse>(this.baseURL + `/channels/${channelType}/${channelId}/unpin`);
   }
 
   /**

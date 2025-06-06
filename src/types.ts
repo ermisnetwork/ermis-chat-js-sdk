@@ -328,6 +328,7 @@ export type ChannelAPIResponse<ErmisChatGenerics extends ExtendableGenerics = De
   threads?: ThreadResponse[];
   watcher_count?: number;
   watchers?: UserResponse<ErmisChatGenerics>[];
+  is_pinned?: boolean;
 };
 
 export type ChannelUpdateOptions = {
@@ -2082,6 +2083,7 @@ export type ChannelData<
 > = ErmisChatGenerics['channelType'] & {
   members?: string[];
   name?: string;
+  is_pinned?: boolean;
 };
 
 export type ChannelMembership<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
