@@ -300,6 +300,7 @@ export type ChannelResponse<
   description?: string;
   member_message_cooldown?: number;
   member_capabilities?: string[];
+  is_pinned?: boolean;
 };
 
 export type QueryReactionsOptions = Pager;

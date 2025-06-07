@@ -1225,6 +1225,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     state.messages = enrichWithUserInfo(state.messages, users);
     state.pinned_messages = state.pinned_messages ? enrichWithUserInfo(state.pinned_messages, users) : [];
     state.read = enrichWithUserInfo(state.read || [], users);
+    state.channel.is_pinned = state.is_pinned || false;
 
     // update the channel id if it was missing
 
@@ -1875,6 +1876,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           const user = getUserInfo(event.member.user_id, users);
           event.member.user = user;
           channelState.members[event.member.user_id] = event.member;
+          channelState.membership = event.member;
         }
         break;
       case 'member.removed':
@@ -2031,8 +2033,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
           channelState.members[event.member.user_id] = event.member;
 
-          this.offlineMode = true;
-          this.initialized = true;
+          // this.offlineMode = true;
+          // this.initialized = true;
         }
         break;
       case 'member.promoted':
