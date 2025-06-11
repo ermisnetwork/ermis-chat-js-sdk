@@ -2440,6 +2440,7 @@ export type Message<ErmisChatGenerics extends ExtendableGenerics = DefaultGeneri
   forward_cid?: string;
   poll_type?: string; // single | multiple
   poll_choices?: string[];
+  sticker_url?: string;
 };
 
 export type PollMessage = {
