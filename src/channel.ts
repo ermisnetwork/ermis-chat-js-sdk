@@ -1871,6 +1871,17 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         }
         break;
       case 'member.added':
+        if (event.member?.user_id) {
+          const user = getUserInfo(event.member.user_id, users);
+          event.member.user = user;
+
+          channelState.members[event.member.user_id] = event.member;
+
+          if (event.member.user?.id === this.getClient().user?.id) {
+            channelState.membership = event.member;
+          }
+        }
+        break;
       case 'member.updated':
         if (event.member?.user_id) {
           const user = getUserInfo(event.member.user_id, users);

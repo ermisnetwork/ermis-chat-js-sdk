@@ -1415,12 +1415,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     //   activeChannelKeys.forEach((activeChannelKey) => (this.activeChannels[activeChannelKey].state.unreadCount = 0));
     // }
 
-    if (
-      (event.type === 'channel.deleted' ||
-        event.type === 'notification.channel_deleted' ||
-        event.type === 'notification.invite_rejected') &&
-      event.cid
-    ) {
+    if ((event.type === 'channel.deleted' || event.type === 'notification.channel_deleted') && event.cid) {
       client.state.deleteAllChannelReference(event.cid);
       this.activeChannels[event.cid]?._disconnect();
 
@@ -1430,8 +1425,30 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         delete this.activeChannels[event.cid];
       });
     }
+    if (event.type === 'notification.invite_rejected') {
+      if (event.member?.user_id === this.userID && event.cid) {
+        client.state.deleteAllChannelReference(event.cid);
+        this.activeChannels[event.cid]?._disconnect();
+
+        postListenerCallbacks.push(() => {
+          if (!event.cid) return;
+
+          delete this.activeChannels[event.cid];
+        });
+      }
+    }
     if (event.type === 'notification.invite_accepted') {
       //TODO handle channel list and invited channels here
+    }
+
+    if (event.type === 'member.added') {
+      if (event.member?.user_id === this.userID) {
+        const c = this.channel(event.channel_type || '', event.channel_id);
+        // Gọi watch để lấy đầy đủ thông tin channel từ server
+        c.watch().catch((err) => {
+          this.logger('error', 'Failed to watch channel after member.added', { err, event });
+        });
+      }
     }
 
     return postListenerCallbacks;
