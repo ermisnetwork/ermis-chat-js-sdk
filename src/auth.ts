@@ -17,8 +17,11 @@ export class ErmisAuthProvider {
   userAgent?: string;
   /** Last identifier (phone or email) used for OTP */
   lastIdentifier?: string;
-  /** Last login type used for OTP ('Phone' or 'Email' ) */
-  lastLoginType?: 'Phone' | 'Email';
+  /**
+   * The last OTP method used ('Sms', 'Voice', or 'Email').
+   * Used to verify OTP for the correct method.
+   */
+  lastMethod?: 'Sms' | 'Voice' | 'Email';
   /** Wallet address used for wallet authentication */
   address?: string;
 
@@ -235,46 +238,58 @@ export class ErmisAuthProvider {
 
   /**
    * Send OTP to a phone number.
-   * @param phone_nr Phone number
+   * @param identifier Phone number
    * @param language Language code (e.g. 'En', 'Vi')
    * @param method Method type (e.g. 'Sms', 'Voice')
    */
   async sendOtpToPhone(
-    phone_nr: string,
+    identifier: string,
     language: string,
-    method: string,
+    method: 'Sms' | 'Voice',
   ): Promise<{ success: boolean; message?: string }> {
-    this.lastIdentifier = phone_nr;
-    this.lastLoginType = 'Phone';
+    this.lastIdentifier = identifier;
+    this.lastMethod = method;
     const data = {
-      phone_nr,
+      apikey: this.apiKey,
+      identifier,
       language,
       method,
+      otp_type: 'Login',
     };
-    return this.post<{ success: boolean; message?: string }>(this.baseURL + '/auth/phone_otp', data);
+    return this.post<{ success: boolean; message?: string }>(this.baseURL + '/auth/get_otp_new', data);
   }
 
   /**
-   * Send OTP to an email address.
-   * @param email Email address
+   * Send OTP to a email.
+   * @param identifier Email address
+   * @param language Language code (e.g. 'En', 'Vi')
+   * @param method Method type (e.g. 'Email')
    */
-  async sendOtpToEmail(email: string): Promise<{ success: boolean; message?: string }> {
-    this.lastIdentifier = email;
-    this.lastLoginType = 'Email';
-    const data = { email };
-    return this.post<{ success: boolean; message?: string }>(this.baseURL + '/auth/email_otp', data);
+  async sendOtpToEmail(
+    identifier: string,
+    language: string,
+    method: 'Email',
+  ): Promise<{ success: boolean; message?: string }> {
+    this.lastIdentifier = identifier;
+    this.lastMethod = method;
+    const data = {
+      apikey: this.apiKey,
+      identifier,
+      language,
+      method,
+      otp_type: 'Login',
+    };
+    return this.post<{ success: boolean; message?: string }>(this.baseURL + '/auth/get_otp_new', data);
   }
 
   /**
    * Verify OTP for phone or email.
-   * @param identifier Phone number or email
    * @param otp OTP code
-   * @param login_type 'Phone' | 'Email'
    */
   async verifyOtp(otp: string): Promise<{ success: boolean; message?: string }> {
     const data = {
       identifier: this.lastIdentifier,
-      login_type: this.lastLoginType,
+      method: this.lastMethod,
       apikey: this.apiKey,
       otp,
     };
