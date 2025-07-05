@@ -1820,6 +1820,16 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           const userMsg = getUserInfo(event.message.user?.id || '', users);
           event.user = userEvent;
           event.message.user = userMsg;
+
+          if (event.message?.quoted_message) {
+            const quotedUser = getUserInfo(event.message.quoted_message.user?.id || '', users);
+            event.message.quoted_message.user = quotedUser;
+          }
+
+          if (event.message?.latest_reactions) {
+            event.message.latest_reactions = enrichWithUserInfo(event.message.latest_reactions || [], users);
+          }
+
           this._extendEventWithOwnReactions(event);
           channelState.addMessageSorted(event.message, false, false);
           if (event.message.pinned) {
@@ -1964,11 +1974,19 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           event.message.user = userMsg;
           event.message.latest_reactions = enrichWithUserInfo(event.message.latest_reactions || [], users);
           event.reaction.user = userReaction;
+          if (event.message?.quoted_message) {
+            const quotedUser = getUserInfo(event.message.quoted_message.user?.id || '', users);
+            event.message.quoted_message.user = quotedUser;
+          }
           event.message = channelState.addReaction(event.reaction, event.message);
         }
         break;
       case 'reaction.deleted':
         if (event.reaction) {
+          if (event.message?.quoted_message) {
+            const quotedUser = getUserInfo(event.message.quoted_message.user?.id || '', users);
+            event.message.quoted_message.user = quotedUser;
+          }
           event.message = channelState.removeReaction(event.reaction, event.message);
         }
         break;
