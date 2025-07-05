@@ -1931,6 +1931,7 @@ A full list of events is shown below. The next section of the documentation expl
 | `user.watching.start` | when a user starts watching a channel | clients watching the channel
 | `user.watching.stop` | when a user stops watching a channel | clients watching the channel
 | `signal` | when call-related notifications are sent in direct channels (audio/video calls) | clients watching the channel
+| `pollchoice.new` | when a user create a poll successfully | clients watching the channel
 
 #### 1. Listening for Events
 
