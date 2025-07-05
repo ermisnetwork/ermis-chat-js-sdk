@@ -242,17 +242,13 @@ export class ErmisAuthProvider {
    * @param language Language code (e.g. 'En', 'Vi')
    * @param method Method type (e.g. 'Sms', 'Voice')
    */
-  async sendOtpToPhone(
-    identifier: string,
-    language: string,
-    method: 'Sms' | 'Voice',
-  ): Promise<{ success: boolean; message?: string }> {
+  async sendOtpToPhone(identifier: string, method: 'Sms' | 'Voice'): Promise<{ success: boolean; message?: string }> {
     this.lastIdentifier = identifier;
     this.lastMethod = method;
     const data = {
       apikey: this.apiKey,
       identifier,
-      language,
+      language: 'Vi',
       method,
       otp_type: 'Login',
     };
@@ -265,18 +261,14 @@ export class ErmisAuthProvider {
    * @param language Language code (e.g. 'En', 'Vi')
    * @param method Method type (e.g. 'Email')
    */
-  async sendOtpToEmail(
-    identifier: string,
-    language: string,
-    method: 'Email',
-  ): Promise<{ success: boolean; message?: string }> {
+  async sendOtpToEmail(identifier: string): Promise<{ success: boolean; message?: string }> {
     this.lastIdentifier = identifier;
-    this.lastMethod = method;
+    this.lastMethod = 'Email';
     const data = {
       apikey: this.apiKey,
       identifier,
-      language,
-      method,
+      language: 'Vi',
+      method: 'Email',
       otp_type: 'Login',
     };
     return this.post<{ success: boolean; message?: string }>(this.baseURL + '/auth/get_otp_new', data);

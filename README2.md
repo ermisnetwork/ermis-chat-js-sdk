@@ -82,123 +82,32 @@ const options = {
 const authProvider = new ErmisAuthProvider(API_KEY, options);
 ```
 
-### Step 4: Integrate Login via Wallet
-
-After installing WalletConnect, you need to import `ErmisAuth` from Ermis to connect to the login flow in Ermis Chat:
+**Send OTP to email:**
 
 ```javascript
-import { ErmisAuth } from 'ermis-chat-js-sdk';
-const options = {
-  baseURL: BASE_URL,
-}; // optional
-
-const authInstance = ErmisAuth.getInstance(API_KEY, address, options);
+const email = 'abc@gmail.com';
+await authProvider.sendOtpToEmail(email);
 ```
 
-#### 4.1 Create challenge
-
-Create challenge message before signing with the wallet:
+**Verify OTP to get token:**
 
 ```javascript
-const challenge = await authInstance.startAuth();
+const response = await authProvider.verifyOtp(otp);
+// response.token is the token to connect to the chat SDK
 ```
 
-**Response**
+**Response:**
 
 ```javascript
 {
-    "domain": {
-        "name": "Defguard",
-        "version": "1"
-    },
-    "types": {
-        "EIP712Domain": [
-            {
-                "name": "name",
-                "type": "string"
-            },
-            {
-                "name": "version",
-                "type": "string"
-            }
-        ],
-        "ProofOfOwnership": [
-            {
-                "name": "wallet",
-                "type": "address"
-            },
-            {
-                "name": "content",
-                "type": "string"
-            },
-            {
-                "name": "nonce",
-                "type": "string"
-            }
-        ]
-    },
-    "primaryType": "ProofOfOwnership",
-    "message": {
-        "wallet": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
-        "content": "Please read this carefully:Click to sign to prove you are in possesion of your private key to the account.This request will not trigger a blockchain transaction or cost any gas fees.",
-        "nonce": "123b92be27edefdfd08395bd52b58f18544fb29dedd304bf33965ca04b050f91"
-    }
-}
-```
-
-#### 4.2 Sign wallet and Get Token
-
-After receiving the challenge message, sign the wallet to get the signature using [useSignTypedData](https://wagmi.sh/react/api/hooks/useSignTypedData), then retrieve the token:
-
-**Example**:
-
-```javascript
-import { useSignTypedData, useAccount } from 'wagmi';
-
-function App() {
-  const { signTypedData } = useSignTypedData();
-  const { connector } = useAccount();
-
-  const onSignMessage = () => {
-    const { types, domain, primaryType, message } = challenge;
-
-    let signature = '';
-    signTypedDataAsync(
-      {
-        types,
-        domain,
-        connector,
-        primaryType,
-        message,
-      },
-      {
-        onSuccess: (s) => {
-          signature = s;
-        },
-      },
-    );
-
-    if (signature) {
-      const response = await authInstance.getAuth(signature); // get token
-    }
-  };
-
-  return <button onClick={onSignMessage}>Sign message</button>;
-}
-```
-
-**Response**
-
-```javascript
-{
-  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiMHg4ZWI3MTgwMzNiNGEzYzVmOGJkZWExNzczZGVkMDI1OWIyMzAwZjVkIiwiY2xpZW50X2lkIjoiNmZiZGVjYjAtMWVjOC00ZTMyLTk5ZDctZmYyNjgzZTMwOGI3IiwiY2hhaW5faWQiOjAsInByb2plY3RfaWQiOiJiNDQ5MzdlNC1jMGQ0LTRhNzMtODQ3Yy0zNzMwYTkyM2NlODMiLCJhcGlrZXkiOiJrVUNxcWJmRVF4a1pnZTdISERGY0l4Zm9IenFTWlVhbSIsImVybWlzIjp0cnVlLCJleHAiOjE4MjU1MzQ4MjI2NDMsImFkbWluIjpmYWxzZSwiZ2F0ZSI6ZmFsc2V9.nP2pIx1PAG-GrjNPgh8pJNfMfL-rX8YFpsDB-yFKjQs",
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiZXhhbXBsZUBnbWFpbC5jb20iLCJjbGllbnRfaWQiOiI2ZmJkZWNiMC0xZWM4LTRlMzItOTlkNy1mZjI2ODNlMzA4YjciLCJjaGFpbl9pZCI6MCwicHJvamVjdF9pZCI6ImI0NDkzN2U0LWMwZDQtNGE3My04NDdjLTM3MzBhOTIzY2U4MyIsImFwaWtleSI6ImtVQ3FxYmZFUXhrWmdlN0hIRGRjSXhmb0h6cVNaVWFtIiwiZXJtaXMiOnRydWUsImV4cCI6MTgyNTUzNDgyMjY0MywiYWRtaW4iOmZhbHNlLCJnYXRlIjpmYWxzZX0.nP2pIx1PAG-GrjNPgh8pJNfMfL-rX8YFpsDB-yFKjQs",
   "refresh_token": "Aeqds63dfXXKqGkUrgsS6K2O",
-  "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+  "user_id": "example@gmail.com",
   "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
 }
 ```
 
-### Step 5: Initialize the Chat SDk
+### Step 4: Initialize the Chat SDK
 
 On the client-side, initialize the Chat client with your **API key** and **ProjectID**.
 
@@ -213,12 +122,7 @@ const options = {
 const chatClient = ErmisChat.getInstance(API_KEY, PROJECT_ID, options);
 ```
 
-Once initialized, you must specify the current user with `connectUser`.
-We provide two methods to initialize the client:
-
-#### 1. Sign method via Wallet:
-
-The client will sign a message using their wallet. We will receive and verify the signature. For cases where direct authentication with the client's personal wallet is required.
+After obtaining the token and user_id from the OTP verification step, connect the user to the chat:
 
 ```javascript
 await chatClient.connectUser(
@@ -231,35 +135,7 @@ await chatClient.connectUser(
 );
 ```
 
-| Name      | Type   | Required | Description                                               |
-| :-------- | :----- | :------- | :-------------------------------------------------------- |
-| `user_id` | string | Yes      | User ID obtained from the `getAuth` function              |
-| `token`   | string | Yes      | Authentication token obtained from the `getAuth` function |
-
-#### 2. Initial token method:
-
-The client provides an initial token, which is a token issued by the client. This method also requires the `external_auth` = true parameter. For customers using their own authentication system and providing tokens through this method
-
-```javascript
-const external_auth = true;
-await chatClient.connectUser(
-  {
-    api_key: API_KEY,
-    id: user_id,
-    name: user_id,
-  },
-  token,
-  external_auth,
-);
-```
-
-| Name            | Type    | Required | Description                                                                                                                                                                                                                                              |
-| :-------------- | :------ | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_id`       | string  | Yes      | This is the user ID provided by the client                                                                                                                                                                                                               |
-| `token`         | string  | Yes      | This is the token provided by the client                                                                                                                                                                                                                 |
-| `external_auth` | boolean | No       | This is the condition for initializing the client through the client's authentication system. When `external_auth` is set to true, the system will use the authentication method based on the token and the public key previously provided by the client |
-
-### Step 6: Sending your first message
+### Step 5: Sending your first message
 
 Now that the Chat SDK has been imported, you're ready to start sending messages.
 Here are the steps to send your first message using the Chat SDK:
@@ -277,11 +153,170 @@ await channel.sendMessage({
 
 ## Features
 
+1. [Authentication methods](#authentication-methods)
 1. [User management](#user-management)
 1. [Channel management](#channel-management)
 1. [Message management](#message-management)
 1. [Call management](#call-management)
 1. [Events](#events)
+
+### Authentication methods
+
+ErmisChat SDK supports multiple authentication methods:
+
+#### 1. Login with Email
+
+- Call `sendOtpToEmail(email)` to send an OTP to the user's email.
+- Call `verifyOtp(otp)` to verify the OTP and receive the authentication token.
+
+```javascript
+const email = 'abcd@gmail.com';
+await authProvider.sendOtpToEmail(email);
+// After receiving the OTP in your email:
+const response = await authProvider.verifyOtp(otp);
+```
+
+#### 2. Login with Phone Number
+
+- Call `sendOtpToPhone(phoneNumber, method)` to send an OTP to the user's phone.
+- Call `verifyOtp(otp)` to verify the OTP and receive the authentication token.
+
+```javascript
+const phoneNumber = '0396518000';
+const method = 'Sms'; // or Voice
+await authProvider.sendOtpToPhone(phoneNumber, method);
+// After receiving the OTP on your phone:
+const response = await authProvider.verifyOtp(otp);
+```
+
+#### 3. Login with Google
+
+- Call `loginWithGoogle(token)` with the Google OAuth token to authenticate.
+
+```javascript
+const response = await authProvider.loginWithGoogle(googleToken);
+```
+
+#### 4. Login with Wallet
+
+- Install [WalletConnect](https://walletconnect.com/) or another wallet provider to obtain the user's wallet address.
+- Call `getWalletChallenge(address)` to get a challenge string for signing.
+- Sign the challenge using the user's wallet to obtain a signature.
+- Call `verifyWalletSignature(signature)` to verify the signature and receive the authentication token.
+
+**4.1: Install WalletConnect**
+
+You need to install WalletConnect to sign in and login to the Chat SDK. For more details, refer to the [WalletConnect docs](https://docs.walletconnect.com/appkit/javascript/core/installation) and [Wagmi docs](https://wagmi.sh).
+
+> Note: For a list of supported wallets, see [here](https://explorer.walletconnect.com/?type=wallet)
+
+**4.2: Get challenge**
+
+```javascript
+import { ErmisAuthProvider } from 'ermis-chat-js-sdk';
+// Get wallet address (using WalletConnect or other wallet provider)
+const address = '0x123...abc';
+// Get challenge from server
+const challenge = await authProvider.getWalletChallenge(address);
+```
+
+**Response**
+
+```javascript
+{
+  "domain": {
+    "name": "Defguard",
+    "version": "1"
+  },
+  "types": {
+    "EIP712Domain": [
+      {
+          "name": "name",
+          "type": "string"
+      },
+      {
+          "name": "version",
+          "type": "string"
+      }
+    ],
+    "ProofOfOwnership": [
+      {
+          "name": "wallet",
+          "type": "address"
+      },
+      {
+          "name": "content",
+          "type": "string"
+      },
+      {
+          "name": "nonce",
+          "type": "string"
+      }
+    ]
+  },
+  "primaryType": "ProofOfOwnership",
+  "message": {
+    "wallet": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+    "content": "Please read this carefully:Click to sign to prove you are in possesion of your private key to the account.This request will not trigger a blockchain transaction or cost any gas fees.",
+    "nonce": "123b92be27edefdfd08395bd52b58f18544fb29dedd304bf33965ca04b050f91"
+  }
+}
+```
+
+**4.3: Sign wallet and Get Token**
+
+After receiving the challenge message, sign the wallet to get the signature using [useSignTypedData](https://wagmi.sh/react/api/hooks/useSignTypedData), then retrieve the token:
+
+**Example**:
+
+```javascript
+import { useSignTypedData, useAccount } from 'wagmi';
+
+function App() {
+  const { signTypedDataAsync } = useSignTypedData();
+  const { connector } = useAccount();
+
+  const onSignMessage = () => {
+    const { types, domain, primaryType, message } = challenge;
+
+    // Sign the challenge with the wallet (implementation depends on wallet provider)
+    let signature = '';
+    signTypedDataAsync(
+      {
+        types,
+        domain,
+        connector,
+        primaryType,
+        message,
+      },
+      {
+        onSuccess: (s) => {
+          signature = s;
+        },
+      },
+    );
+
+    if (signature) {
+      // Verify signature and get token
+      const response = await authProvider.verifyWalletSignature(signature);
+      // response.token is the token to connect to the chat SDK
+    }
+  };
+
+  return <button onClick={onSignMessage}>Sign message</button>;
+}
+```
+
+**Response for all authentication methods**
+
+```javascript
+{
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiMHg4ZWI3MTgwMzNiNGEzYzVmOGJkZWExNzczZGVkMDI1OWIyMzAwZjVkIiwiY2xpZW50X2lkIjoiNmZiZGVjYjAtMWVjOC00ZTMyLTk5ZDctZmYyNjgzZTMwOGI3IiwiY2hhaW5faWQiOjAsInByb2plY3RfaWQiOiJiNDQ5MzdlNC1jMGQ0LTRhNzMtODQ3Yy0zNzMwYTkyM2NlODMiLCJhcGlrZXkiOiJrVUNxcWJmRVF4a1pnZTdISERGY0l4Zm9IenFTWlVhbSIsImVybWlzIjp0cnVlLCJleHAiOjE4MjU1MzQ4MjI2NDMsImFkbWluIjpmYWxzZSwiZ2F0ZSI6ZmFsc2V9.nP2pIx1PAG-GrjNPgh8pJNfMfL-rX8YFpsDB-yFKjQs",
+  "refresh_token": "Aeqds63dfXXKqGkUrgsS6K2O",
+  "user_id": "0x8eb718033b4a3c5f8bdea1773ded0259b2300f5d",
+  "project_id": "b44937e4-c0d4-4a73-847c-3730a923ce83"
+}
+```
 
 ### User management
 
@@ -1130,6 +1165,57 @@ await channel.sendMessage({
 }
 ```
 
+**1.5 Send sticker message**
+
+- You can send stickers in a message by integrating the sticker domain `https://sticker.ermis.network` using an iframe.
+- When a user selects a sticker, listen for the `message` event from the iframe.
+- The selected sticker will be sent as a URL in the following format: `https://sticker.ermis.network/${sticker}`.
+
+**Example integration:**
+
+```javascript
+// Embed the sticker picker iframe
+<iframe
+  id="sticker-picker"
+  src="https://sticker.ermis.network"
+  style="width: 350px; height: 400px; border: none;"
+></iframe>;
+
+// Listen for sticker selection
+window.addEventListener('message', async (event) => {
+  // Ensure the event is from the sticker domain
+  if (event.origin === 'https://sticker.ermis.network') {
+    const sticker = event.data.sticker; // sticker identifier from the picker
+    if (sticker) {
+      const stickerUrl = `https://sticker.ermis.network/${sticker}`;
+      await channel.sendMessage({
+        sticker_url: stickerUrl,
+      });
+    }
+  }
+});
+```
+
+| Name        | Type   | Required | Description                                   |
+| :---------- | :----- | :------- | :-------------------------------------------- |
+| sticker_url | string | Yes      | The URL of the sticker to send in the message |
+
+**Response**
+
+```javascript
+{
+  "id": "93d3e1c9-75f4-4b15-82f7-1e1af1f01a9c",
+  "text": "",
+  "type": "sticker",
+  "cid": "team:ec964975-ae84-4a8e-91a1-222ca3aeeef8:0ffbf52e-fa5c-4d44-9f40-36a4001a8ff5",
+  "user": {
+    "id": "0xc95dfd46d70aba666b96428271d05257a6fc88d8"
+  },
+  "created_at": "2025-07-05T08:01:06.125523416Z",
+  "sticker_url": "https://sticker.ermis.network/packs/thumbnails/6165846546102355085.webp"
+}
+```
+
 #### 2. Upload file
 
 This feature allows user to upload a file to the system. Maximum file size is 2GB
@@ -1476,7 +1562,94 @@ await channel.deleteReaction(message_id, reaction_type);
 | message_id    | string | Yes      | ID of the message to react to                                                  |
 | reaction_type | string | Yes      | Type of the reaction. User could have only 1 reaction of each type per message |
 
-#### 10. Typing Indicators
+#### 10. Poll message
+
+This feature allows users to create polls and vote in polls within a channel.
+
+**10.1 Create a poll**
+
+```javascript
+await channel.createPoll({
+  poll_type: 'single', // or 'multiple'
+  poll_choices: ['Option 1', 'Option 2'],
+  text: 'Which option do you prefer?',
+});
+```
+
+| Name         | Type   | Required | Description                          |
+| :----------- | :----- | :------- | :----------------------------------- |
+| poll_type    | string | Yes      | Type of poll: 'single' or 'multiple' |
+| poll_choices | array  | Yes      | List of choices for the poll         |
+| text         | string | Yes      | The poll question or description     |
+
+**Response**
+
+```javascript
+{
+  "id": "716f92db-7b3e-4148-8d93-faa97d385d48",
+  "text": "Which option do you prefer?",
+  "type": "poll",
+  "cid": "team:ec964975-ae84-4a8e-91a1-222ca3aeeef8:0ffbf52e-fa5c-4d44-9f40-36a4001a8ff5",
+  "user": {
+    "id": "0xc95dfd46d70aba666b96428271d05257a6fc88d8"
+  },
+  "created_at": "2025-07-05T07:33:54.623806987Z",
+  "poll_type": "single",
+  "poll_choice_counts": {
+    "Option 1": 0,
+    "Option 2": 0,
+  }
+}
+```
+
+**10.2 Vote in a poll**
+
+```javascript
+const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+const poll_choie = 'Option 1';
+await channel.votePoll(message_id, poll_choie);
+```
+
+| Name       | Type   | Required | Description                 |
+| :--------- | :----- | :------- | :-------------------------- |
+| message_id | string | Yes      | The ID of the poll message  |
+| poll_choie | string | Yes      | The ID of the chosen option |
+
+**Response**
+
+```javascript
+{
+  "message": {
+    "id": "716f92db-7b3e-4148-8d93-faa97d385d48",
+    "text": "Which option do you prefer?",
+    "type": "poll",
+    "cid": "team:ec964975-ae84-4a8e-91a1-222ca3aeeef8:0ffbf52e-fa5c-4d44-9f40-36a4001a8ff5",
+    "user": {
+      "id": "0xc95dfd46d70aba666b96428271d05257a6fc88d8"
+    },
+    "created_at": "2025-07-05T07:33:54.623806987Z",
+    "poll_type": "single",
+    "latest_poll_choices": [
+      {
+        "user_id": "0xc95dfd46d70aba666b96428271d05257a6fc88d8",
+        "text": "1",
+        "created_at": "2025-07-05T07:43:35.470306709Z"
+      }
+    ],
+    "poll_choice_counts": {
+      "Option 1": 1,
+      "Option 2": 0
+    }
+  },
+  "poll_choice": {
+    "user_id": "0xc95dfd46d70aba666b96428271d05257a6fc88d8",
+    "text": "1",
+    "created_at": "2025-07-05T07:43:35.470306709Z"
+  }
+}
+```
+
+#### 11. Typing Indicators
 
 Typing indicators feature lets users see who is currently typing in the channel
 
@@ -1507,7 +1680,7 @@ channel.on('typing.stop', (event) => {
 });
 ```
 
-#### 11. System message
+#### 12. System message
 
 Below you can find the complete list of system message that are returned by messages from channel. You can define from syntax message by description.
 
