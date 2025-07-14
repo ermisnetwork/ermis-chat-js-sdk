@@ -718,7 +718,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    */
   async _update(payload: Object) {
     const data = await this.getClient().post<UpdateChannelAPIResponse<ErmisChatGenerics>>(this._channelURL(), payload);
-    this.data = data.channel;
+    this.data = { ...this.data, ...data.channel };
     return data;
   }
 
@@ -1929,6 +1929,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             this.query({ state: false, messages: { limit: 0 }, watchers: { limit: 0 } });
           }
           channel.data = {
+            ...channel.data,
             ...event.channel,
             hidden: event.channel?.hidden ?? channel.data?.hidden,
             own_capabilities: event.channel?.own_capabilities ?? channel.data?.own_capabilities,
