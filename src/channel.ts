@@ -1212,6 +1212,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     }
 
     const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', payload);
+    // Ensure all members' user info are loaded in state.users
+    await ensureMembersUserInfoLoaded(this.getClient(), state.channel.members);
     const users = Object.values(this.getClient().state.users);
     state.channel.members = enrichWithUserInfo(state.channel.members, users);
     state.channel.name =
@@ -2036,6 +2038,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           }
 
           channelState.members[event.member.user_id] = event.member;
+          channel.data = {
+            ...channel.data,
+            member_count: Number(channel.data?.member_count) + 1,
+            members: channel.data?.members ? [...channel.data.members, event.member] : [event.member],
+          } as ChannelAPIResponse<ErmisChatGenerics>['channel'];
           this.offlineMode = true;
           this.initialized = true;
         }
