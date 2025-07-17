@@ -176,13 +176,27 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       video: hasCamera ? constraints.video : false,
     };
 
-    // Request the media stream with the determined constraints
-    const stream = await navigator.mediaDevices.getUserMedia(finalConstraints);
-    if (this.onLocalStream) {
-      this.onLocalStream(stream);
+    try {
+      // Request the media stream with the determined constraints
+      const stream = await navigator.mediaDevices.getUserMedia(finalConstraints);
+      if (this.callStatus === CallStatus.ENDED) {
+        // If the call has ended, stop the local stream tracks
+        stream.getTracks().forEach((track) => track.stop());
+        this.destroy();
+        return;
+      }
+      if (this.onLocalStream) {
+        this.onLocalStream(stream);
+      }
+      this.localStream = stream;
+      return stream;
+    } catch (error) {
+      console.error('Error getting user media:', error);
+      // if (typeof this.onError === 'function') {
+      //   this.onError('Unable to access microphone/camera');
+      // }
+      return null;
     }
-    this.localStream = stream;
-    return stream;
   }
 
   private setConnectionMessage(message: string | null) {
@@ -489,10 +503,13 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
             // it means another device (or tab) of the same user has started a call.
             // In this case, mark this call instance as destroyed and ignore further events.
             this.isDestroyed = true;
+            this.destroy();
             return;
           }
           this.isDestroyed = false;
+          this.callStatus = '';
           await this.startLocalStream({ audio: true, video: true });
+          if (this.callStatus === CallStatus.ENDED) return;
           this.setUserInfo(cid, eventUserId);
           this.setCallStatus(CallStatus.RINGING);
           this.callType = is_video ? 'video' : 'audio';
