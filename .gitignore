@@ -69,3 +69,6 @@ typings/
 .envrc
 
 test/typescript/data.*
+
+yarn.lock
+package-lock.json
