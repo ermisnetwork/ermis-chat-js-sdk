@@ -266,42 +266,41 @@ export type BlockListResponse = BlockList & {
   updated_at?: string;
 };
 
-export type ChannelResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['channelType'] & {
-  cid: string;
-  disabled: boolean;
-  frozen: boolean;
-  id: string;
-  type: string;
-  auto_translation_enabled?: boolean;
-  auto_translation_language?: TranslationLanguages | '';
-  config?: ChannelConfigWithInfo<ErmisChatGenerics>;
-  cooldown?: number;
-  created_at?: string;
-  created_by?: UserResponse<ErmisChatGenerics> | null;
-  created_by_id?: string;
-  deleted_at?: string;
-  hidden?: boolean;
-  invites?: string[];
-  joined?: boolean;
-  last_message_at?: string;
-  member_count?: number;
-  members: ChannelMemberResponse<ErmisChatGenerics>[];
-  muted?: boolean;
-  name?: string;
-  own_capabilities?: string[];
-  team?: string;
-  truncated_at?: string;
-  truncated_by?: UserResponse<ErmisChatGenerics>;
-  truncated_by_id?: string;
-  updated_at?: string;
-  image?: string;
-  description?: string;
-  member_message_cooldown?: number;
-  member_capabilities?: string[];
-  is_pinned?: boolean;
-};
+export type ChannelResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['channelType'] & {
+    cid: string;
+    disabled: boolean;
+    frozen: boolean;
+    id: string;
+    type: string;
+    auto_translation_enabled?: boolean;
+    auto_translation_language?: TranslationLanguages | '';
+    config?: ChannelConfigWithInfo<ErmisChatGenerics>;
+    cooldown?: number;
+    created_at?: string;
+    created_by?: UserResponse<ErmisChatGenerics> | null;
+    created_by_id?: string;
+    deleted_at?: string;
+    hidden?: boolean;
+    invites?: string[];
+    joined?: boolean;
+    last_message_at?: string;
+    member_count?: number;
+    members: ChannelMemberResponse<ErmisChatGenerics>[];
+    muted?: boolean;
+    name?: string;
+    own_capabilities?: string[];
+    team?: string;
+    truncated_at?: string;
+    truncated_by?: UserResponse<ErmisChatGenerics>;
+    truncated_by_id?: string;
+    updated_at?: string;
+    image?: string;
+    description?: string;
+    member_message_cooldown?: number;
+    member_capabilities?: string[];
+    is_pinned?: boolean;
+  };
 
 export type QueryReactionsOptions = Pager;
 
@@ -385,18 +384,16 @@ export type CheckSNSResponse = APIResponse & {
   error?: string;
 };
 
-export type CommandResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = Partial<CreatedAtUpdatedAt> & {
-  args?: string;
-  description?: string;
-  name?: CommandVariants<ErmisChatGenerics>;
-  set?: CommandVariants<ErmisChatGenerics>;
-};
+export type CommandResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  Partial<CreatedAtUpdatedAt> & {
+    args?: string;
+    description?: string;
+    name?: CommandVariants<ErmisChatGenerics>;
+    set?: CommandVariants<ErmisChatGenerics>;
+  };
 
-export type ConnectAPIResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = Promise<void | ConnectionOpen<ErmisChatGenerics>>;
+export type ConnectAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  Promise<void | ConnectionOpen<ErmisChatGenerics>>;
 
 export type CreateChannelResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse &
   Omit<CreateChannelOptions<ErmisChatGenerics>, 'client_id' | 'connection_id'> & {
@@ -501,9 +498,8 @@ export type GetCommandResponse<ErmisChatGenerics extends ExtendableGenerics = De
   CreateCommandOptions<ErmisChatGenerics> &
   CreatedAtUpdatedAt;
 
-export type GetMessageAPIResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = SendMessageAPIResponse<ErmisChatGenerics>;
+export type GetMessageAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  SendMessageAPIResponse<ErmisChatGenerics>;
 
 export type ThreadResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   channel: ChannelResponse<ErmisChatGenerics>;
@@ -559,11 +555,10 @@ export type GetThreadAPIResponse<ErmisChatGenerics extends ExtendableGenerics = 
   thread: ThreadResponse<ErmisChatGenerics>;
 };
 
-export type GetMultipleMessagesAPIResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = APIResponse & {
-  messages: MessageResponse<ErmisChatGenerics>[];
-};
+export type GetMultipleMessagesAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  APIResponse & {
+    messages: MessageResponse<ErmisChatGenerics>[];
+  };
 
 export type GetRateLimitsResponse = APIResponse & {
   android?: RateLimitsMap;
@@ -617,9 +612,8 @@ export type ListChannelResponse<ErmisChatGenerics extends ExtendableGenerics = D
   >;
 };
 
-export type ListChannelTypesAPIResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ListChannelResponse<ErmisChatGenerics>;
+export type ListChannelTypesAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ListChannelResponse<ErmisChatGenerics>;
 
 export type ListCommandsResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
   commands: Array<CreateCommandOptions<ErmisChatGenerics> & Partial<CreatedAtUpdatedAt>>;
@@ -632,46 +626,44 @@ export type MuteChannelAPIResponse<ErmisChatGenerics extends ExtendableGenerics 
   // mute?: MuteResponse<ErmisChatGenerics>;
 };
 
-export type MessageResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = MessageResponseBase<ErmisChatGenerics> & {
-  quoted_message?: MessageResponseBase<ErmisChatGenerics>;
-};
-
-export type MessageResponseBase<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = MessageBase<ErmisChatGenerics> & {
-  type: MessageLabel;
-  args?: string;
-  before_message_send_failed?: boolean;
-  channel?: ChannelResponse<ErmisChatGenerics>;
-  cid?: string;
-  command?: string;
-  command_info?: { name?: string };
-  created_at?: string;
-  deleted_at?: string;
-  deleted_reply_count?: number;
-  i18n?: RequireAtLeastOne<Record<`${TranslationLanguages}_text`, string>> & {
-    language: TranslationLanguages;
+export type MessageResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  MessageResponseBase<ErmisChatGenerics> & {
+    quoted_message?: MessageResponseBase<ErmisChatGenerics>;
   };
-  latest_reactions?: ReactionResponse<ErmisChatGenerics>[];
-  mentioned_users?: UserResponse<ErmisChatGenerics>[];
-  message_text_updated_at?: string;
-  moderation_details?: ModerationDetailsResponse;
-  own_reactions?: ReactionResponse<ErmisChatGenerics>[] | null;
-  pin_expires?: string | null;
-  pinned_at?: string | null;
-  pinned_by?: UserResponse<ErmisChatGenerics> | null;
-  poll?: PollResponse<ErmisChatGenerics>;
-  reaction_counts?: { [key: string]: number } | null;
-  reaction_groups?: { [key: string]: ReactionGroupResponse } | null;
-  reaction_scores?: { [key: string]: number } | null;
-  reply_count?: number;
-  shadowed?: boolean;
-  status?: string;
-  thread_participants?: UserResponse<ErmisChatGenerics>[];
-  updated_at?: string;
-};
+
+export type MessageResponseBase<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  MessageBase<ErmisChatGenerics> & {
+    type: MessageLabel;
+    args?: string;
+    before_message_send_failed?: boolean;
+    channel?: ChannelResponse<ErmisChatGenerics>;
+    cid?: string;
+    command?: string;
+    command_info?: { name?: string };
+    created_at?: string;
+    deleted_at?: string;
+    deleted_reply_count?: number;
+    i18n?: RequireAtLeastOne<Record<`${TranslationLanguages}_text`, string>> & {
+      language: TranslationLanguages;
+    };
+    latest_reactions?: ReactionResponse<ErmisChatGenerics>[];
+    mentioned_users?: UserResponse<ErmisChatGenerics>[];
+    message_text_updated_at?: string;
+    moderation_details?: ModerationDetailsResponse;
+    own_reactions?: ReactionResponse<ErmisChatGenerics>[] | null;
+    pin_expires?: string | null;
+    pinned_at?: string | null;
+    pinned_by?: UserResponse<ErmisChatGenerics> | null;
+    poll?: PollResponse<ErmisChatGenerics>;
+    reaction_counts?: { [key: string]: number } | null;
+    reaction_groups?: { [key: string]: ReactionGroupResponse } | null;
+    reaction_scores?: { [key: string]: number } | null;
+    reply_count?: number;
+    shadowed?: boolean;
+    status?: string;
+    thread_participants?: UserResponse<ErmisChatGenerics>[];
+    updated_at?: string;
+  };
 
 export type ReactionGroupResponse = {
   count: number;
@@ -719,16 +711,14 @@ export type OwnUserBase<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   roles?: string[];
 };
 
-export type OwnUserResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = UserResponse<ErmisChatGenerics> & OwnUserBase<ErmisChatGenerics>;
+export type OwnUserResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  UserResponse<ErmisChatGenerics> & OwnUserBase<ErmisChatGenerics>;
 
-export type PartialUpdateChannelAPIResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = APIResponse & {
-  channel: ChannelResponse<ErmisChatGenerics>;
-  members: ChannelMemberResponse<ErmisChatGenerics>[];
-};
+export type PartialUpdateChannelAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  APIResponse & {
+    channel: ChannelResponse<ErmisChatGenerics>;
+    members: ChannelMemberResponse<ErmisChatGenerics>[];
+  };
 
 export type PermissionAPIResponse = APIResponse & {
   permission?: PermissionAPIObject;
@@ -743,13 +733,12 @@ export type ReactionAPIResponse<ErmisChatGenerics extends ExtendableGenerics = D
   reaction: ReactionResponse<ErmisChatGenerics>;
 };
 
-export type ReactionResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = Reaction<ErmisChatGenerics> & {
-  created_at: string;
-  message_id: string;
-  updated_at: string;
-};
+export type ReactionResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  Reaction<ErmisChatGenerics> & {
+    created_at: string;
+    message_id: string;
+    updated_at: string;
+  };
 
 export type ReadResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   last_read: string;
@@ -1009,9 +998,8 @@ export type InviteOptions<ErmisChatGenerics extends ExtendableGenerics = Default
 };
 
 /** @deprecated use MarkChannelsReadOptions instead */
-export type MarkAllReadOptions<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = MarkChannelsReadOptions<ErmisChatGenerics>;
+export type MarkAllReadOptions<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  MarkChannelsReadOptions<ErmisChatGenerics>;
 
 export type MarkChannelsReadOptions<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   client_id?: string;
@@ -1248,11 +1236,10 @@ export type Event<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
   watcher_count?: number;
 };
 
-export type UserCustomEvent<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['eventType'] & {
-  type: string;
-};
+export type UserCustomEvent<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['eventType'] & {
+    type: string;
+  };
 
 export type EventHandler<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = (
   event: Event<ErmisChatGenerics>,
@@ -1287,10 +1274,10 @@ export type MessageFlagsFilters = QueryFilters<
       | RequireOnlyOne<Pick<QueryFilter<MessageFlagsFiltersOptions['user_id']>, '$eq' | '$in'>>
       | PrimitiveFilter<MessageFlagsFiltersOptions['user_id']>;
   } & {
-      [Key in keyof Omit<MessageFlagsFiltersOptions, 'channel_cid' | 'user_id' | 'is_reviewed'>]:
-        | RequireOnlyOne<QueryFilter<MessageFlagsFiltersOptions[Key]>>
-        | PrimitiveFilter<MessageFlagsFiltersOptions[Key]>;
-    }
+    [Key in keyof Omit<MessageFlagsFiltersOptions, 'channel_cid' | 'user_id' | 'is_reviewed'>]:
+      | RequireOnlyOne<QueryFilter<MessageFlagsFiltersOptions[Key]>>
+      | PrimitiveFilter<MessageFlagsFiltersOptions[Key]>;
+  }
 >;
 
 export type FlagsFiltersOptions = {
@@ -1376,11 +1363,11 @@ export type FlagReportsFilters = QueryFilters<
       | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['team']>, '$eq' | '$in'>>
       | PrimitiveFilter<FlagReportsFiltersOptions['team']>;
   } & {
-      [Key in keyof Omit<
-        FlagReportsFiltersOptions,
-        'report_id' | 'user_id' | 'message_id' | 'review_result' | 'reviewed_by'
-      >]: RequireOnlyOne<QueryFilter<FlagReportsFiltersOptions[Key]>> | PrimitiveFilter<FlagReportsFiltersOptions[Key]>;
-    }
+    [Key in keyof Omit<
+      FlagReportsFiltersOptions,
+      'report_id' | 'user_id' | 'message_id' | 'review_result' | 'reviewed_by'
+    >]: RequireOnlyOne<QueryFilter<FlagReportsFiltersOptions[Key]>> | PrimitiveFilter<FlagReportsFiltersOptions[Key]>;
+  }
 >;
 
 export type BannedUsersFilterOptions = {
@@ -1405,10 +1392,10 @@ export type BannedUsersFilters = QueryFilters<
         >
       | PrimitiveFilter<BannedUsersFilterOptions['reason']>;
   } & {
-      [Key in keyof Omit<BannedUsersFilterOptions, 'channel_cid' | 'reason'>]:
-        | RequireOnlyOne<QueryFilter<BannedUsersFilterOptions[Key]>>
-        | PrimitiveFilter<BannedUsersFilterOptions[Key]>;
-    }
+    [Key in keyof Omit<BannedUsersFilterOptions, 'channel_cid' | 'reason'>]:
+      | RequireOnlyOne<QueryFilter<BannedUsersFilterOptions[Key]>>
+      | PrimitiveFilter<BannedUsersFilterOptions[Key]>;
+  }
 >;
 
 export type ReactionFilters<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = QueryFilters<
@@ -1442,36 +1429,22 @@ export type ChannelFilters<ErmisChatGenerics extends ExtendableGenerics = Defaul
         >
       | PrimitiveFilter<ChannelResponse<ErmisChatGenerics>['name']>;
   } & {
-      [Key in keyof Omit<
-        ChannelResponse<{
-          attachmentType: ErmisChatGenerics['attachmentType'];
-          channelType: {};
-          commandType: ErmisChatGenerics['commandType'];
-          eventType: ErmisChatGenerics['eventType'];
-          messageType: ErmisChatGenerics['messageType'];
-          pollOptionType: ErmisChatGenerics['pollOptionType'];
-          pollType: ErmisChatGenerics['pollType'];
-          reactionType: ErmisChatGenerics['reactionType'];
-          userType: ErmisChatGenerics['userType'];
-        }>,
-        'name' | 'members'
-      >]:
-        | RequireOnlyOne<
-            QueryFilter<
-              ChannelResponse<{
-                attachmentType: ErmisChatGenerics['attachmentType'];
-                channelType: {};
-                commandType: ErmisChatGenerics['commandType'];
-                eventType: ErmisChatGenerics['eventType'];
-                messageType: ErmisChatGenerics['messageType'];
-                pollOptionType: ErmisChatGenerics['pollOptionType'];
-                pollType: ErmisChatGenerics['pollType'];
-                reactionType: ErmisChatGenerics['reactionType'];
-                userType: ErmisChatGenerics['userType'];
-              }>[Key]
-            >
-          >
-        | PrimitiveFilter<
+    [Key in keyof Omit<
+      ChannelResponse<{
+        attachmentType: ErmisChatGenerics['attachmentType'];
+        channelType: {};
+        commandType: ErmisChatGenerics['commandType'];
+        eventType: ErmisChatGenerics['eventType'];
+        messageType: ErmisChatGenerics['messageType'];
+        pollOptionType: ErmisChatGenerics['pollOptionType'];
+        pollType: ErmisChatGenerics['pollType'];
+        reactionType: ErmisChatGenerics['reactionType'];
+        userType: ErmisChatGenerics['userType'];
+      }>,
+      'name' | 'members'
+    >]:
+      | RequireOnlyOne<
+          QueryFilter<
             ChannelResponse<{
               attachmentType: ErmisChatGenerics['attachmentType'];
               channelType: {};
@@ -1483,16 +1456,30 @@ export type ChannelFilters<ErmisChatGenerics extends ExtendableGenerics = Defaul
               reactionType: ErmisChatGenerics['reactionType'];
               userType: ErmisChatGenerics['userType'];
             }>[Key]
-          >;
-    } & {
-      roles?: RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'> | PrimitiveFilter<string[]>>;
-    } & {
-      other_roles?: RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'> | PrimitiveFilter<string[]>>;
-    } & {
-      project_id?: RequireOnlyOne<Pick<QueryFilter<string>, '$eq'> | PrimitiveFilter<string>>;
-    } & {
-      blocked?: RequireOnlyOne<Pick<QueryFilter<boolean>, '$eq'> | PrimitiveFilter<boolean>>;
-    }
+          >
+        >
+      | PrimitiveFilter<
+          ChannelResponse<{
+            attachmentType: ErmisChatGenerics['attachmentType'];
+            channelType: {};
+            commandType: ErmisChatGenerics['commandType'];
+            eventType: ErmisChatGenerics['eventType'];
+            messageType: ErmisChatGenerics['messageType'];
+            pollOptionType: ErmisChatGenerics['pollOptionType'];
+            pollType: ErmisChatGenerics['pollType'];
+            reactionType: ErmisChatGenerics['reactionType'];
+            userType: ErmisChatGenerics['userType'];
+          }>[Key]
+        >;
+  } & {
+    roles?: RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'> | PrimitiveFilter<string[]>>;
+  } & {
+    other_roles?: RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'> | PrimitiveFilter<string[]>>;
+  } & {
+    project_id?: RequireOnlyOne<Pick<QueryFilter<string>, '$eq'> | PrimitiveFilter<string>>;
+  } & {
+    blocked?: RequireOnlyOne<Pick<QueryFilter<boolean>, '$eq'> | PrimitiveFilter<boolean>>;
+  }
 >;
 
 export type QueryPollsOptions = Pager;
@@ -1608,36 +1595,22 @@ export type MessageFilters<ErmisChatGenerics extends ExtendableGenerics = Defaul
         >
       | PrimitiveFilter<MessageResponse<ErmisChatGenerics>['text']>;
   } & {
-      [Key in keyof Omit<
-        MessageResponse<{
-          attachmentType: ErmisChatGenerics['attachmentType'];
-          channelType: ErmisChatGenerics['channelType'];
-          commandType: ErmisChatGenerics['commandType'];
-          eventType: ErmisChatGenerics['eventType'];
-          messageType: {};
-          pollOptionType: ErmisChatGenerics['pollOptionType'];
-          pollType: ErmisChatGenerics['pollType'];
-          reactionType: ErmisChatGenerics['reactionType'];
-          userType: ErmisChatGenerics['userType'];
-        }>,
-        'text'
-      >]?:
-        | RequireOnlyOne<
-            QueryFilter<
-              MessageResponse<{
-                attachmentType: ErmisChatGenerics['attachmentType'];
-                channelType: ErmisChatGenerics['channelType'];
-                commandType: ErmisChatGenerics['commandType'];
-                eventType: ErmisChatGenerics['eventType'];
-                messageType: {};
-                pollOptionType: ErmisChatGenerics['pollOptionType'];
-                pollType: ErmisChatGenerics['pollType'];
-                reactionType: ErmisChatGenerics['reactionType'];
-                userType: ErmisChatGenerics['userType'];
-              }>[Key]
-            >
-          >
-        | PrimitiveFilter<
+    [Key in keyof Omit<
+      MessageResponse<{
+        attachmentType: ErmisChatGenerics['attachmentType'];
+        channelType: ErmisChatGenerics['channelType'];
+        commandType: ErmisChatGenerics['commandType'];
+        eventType: ErmisChatGenerics['eventType'];
+        messageType: {};
+        pollOptionType: ErmisChatGenerics['pollOptionType'];
+        pollType: ErmisChatGenerics['pollType'];
+        reactionType: ErmisChatGenerics['reactionType'];
+        userType: ErmisChatGenerics['userType'];
+      }>,
+      'text'
+    >]?:
+      | RequireOnlyOne<
+          QueryFilter<
             MessageResponse<{
               attachmentType: ErmisChatGenerics['attachmentType'];
               channelType: ErmisChatGenerics['channelType'];
@@ -1649,8 +1622,22 @@ export type MessageFilters<ErmisChatGenerics extends ExtendableGenerics = Defaul
               reactionType: ErmisChatGenerics['reactionType'];
               userType: ErmisChatGenerics['userType'];
             }>[Key]
-          >;
-    }
+          >
+        >
+      | PrimitiveFilter<
+          MessageResponse<{
+            attachmentType: ErmisChatGenerics['attachmentType'];
+            channelType: ErmisChatGenerics['channelType'];
+            commandType: ErmisChatGenerics['commandType'];
+            eventType: ErmisChatGenerics['eventType'];
+            messageType: {};
+            pollOptionType: ErmisChatGenerics['pollOptionType'];
+            pollType: ErmisChatGenerics['pollType'];
+            reactionType: ErmisChatGenerics['reactionType'];
+            userType: ErmisChatGenerics['userType'];
+          }>[Key]
+        >;
+  }
 >;
 
 export type PrimitiveFilter<ObjectType> = ObjectType | null;
@@ -1677,8 +1664,7 @@ export type QueryFilter<ObjectType = string> = NonNullable<ObjectType> extends s
 
 export type QueryFilters<Operators = {}> = {
   [Key in keyof Operators]?: Operators[Key];
-} &
-  QueryLogicalOperators<Operators>;
+} & QueryLogicalOperators<Operators>;
 
 export type QueryLogicalOperators<Operators> = {
   $and?: ArrayOneOrMore<QueryFilters<Operators>>;
@@ -1715,36 +1701,22 @@ export type UserFilters<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         >
       | PrimitiveFilter<UserResponse<ErmisChatGenerics>['username']>;
   } & {
-      [Key in keyof Omit<
-        UserResponse<{
-          attachmentType: ErmisChatGenerics['attachmentType'];
-          channelType: ErmisChatGenerics['channelType'];
-          commandType: ErmisChatGenerics['commandType'];
-          eventType: ErmisChatGenerics['eventType'];
-          messageType: ErmisChatGenerics['messageType'];
-          pollOptionType: ErmisChatGenerics['pollOptionType'];
-          pollType: ErmisChatGenerics['pollType'];
-          reactionType: ErmisChatGenerics['reactionType'];
-          userType: {};
-        }>,
-        'id' | 'name' | 'teams' | 'username'
-      >]?:
-        | RequireOnlyOne<
-            QueryFilter<
-              UserResponse<{
-                attachmentType: ErmisChatGenerics['attachmentType'];
-                channelType: ErmisChatGenerics['channelType'];
-                commandType: ErmisChatGenerics['commandType'];
-                eventType: ErmisChatGenerics['eventType'];
-                messageType: ErmisChatGenerics['messageType'];
-                pollOptionType: ErmisChatGenerics['pollOptionType'];
-                pollType: ErmisChatGenerics['pollType'];
-                reactionType: ErmisChatGenerics['reactionType'];
-                userType: {};
-              }>[Key]
-            >
-          >
-        | PrimitiveFilter<
+    [Key in keyof Omit<
+      UserResponse<{
+        attachmentType: ErmisChatGenerics['attachmentType'];
+        channelType: ErmisChatGenerics['channelType'];
+        commandType: ErmisChatGenerics['commandType'];
+        eventType: ErmisChatGenerics['eventType'];
+        messageType: ErmisChatGenerics['messageType'];
+        pollOptionType: ErmisChatGenerics['pollOptionType'];
+        pollType: ErmisChatGenerics['pollType'];
+        reactionType: ErmisChatGenerics['reactionType'];
+        userType: {};
+      }>,
+      'id' | 'name' | 'teams' | 'username'
+    >]?:
+      | RequireOnlyOne<
+          QueryFilter<
             UserResponse<{
               attachmentType: ErmisChatGenerics['attachmentType'];
               channelType: ErmisChatGenerics['channelType'];
@@ -1756,8 +1728,22 @@ export type UserFilters<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
               reactionType: ErmisChatGenerics['reactionType'];
               userType: {};
             }>[Key]
-          >;
-    }
+          >
+        >
+      | PrimitiveFilter<
+          UserResponse<{
+            attachmentType: ErmisChatGenerics['attachmentType'];
+            channelType: ErmisChatGenerics['channelType'];
+            commandType: ErmisChatGenerics['commandType'];
+            eventType: ErmisChatGenerics['eventType'];
+            messageType: ErmisChatGenerics['messageType'];
+            pollOptionType: ErmisChatGenerics['pollOptionType'];
+            pollType: ErmisChatGenerics['pollType'];
+            reactionType: ErmisChatGenerics['reactionType'];
+            userType: {};
+          }>[Key]
+        >;
+  }
 >;
 
 /**
@@ -1970,49 +1956,48 @@ export type AppSettings = {
   };
 };
 
-export type Attachment<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['attachmentType'] & {
-  // main fields for ermis.
-  id?: string;
-  thumb_url?: string;
-  content_disposition?: string;
-  content_length?: number;
-  content_type?: string;
-  updated_at?: string;
-  created_at?: string;
-  message_id?: string;
-  file_name?: string;
-  url?: string;
-  cid?: string;
-  user_id?: string;
+export type Attachment<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['attachmentType'] & {
+    // main fields for ermis.
+    id?: string;
+    thumb_url?: string;
+    content_disposition?: string;
+    content_length?: number;
+    content_type?: string;
+    updated_at?: string;
+    created_at?: string;
+    message_id?: string;
+    file_name?: string;
+    url?: string;
+    cid?: string;
+    user_id?: string;
 
-  // old fields.
-  actions?: Action[];
-  asset_url?: string;
-  author_icon?: string;
-  author_link?: string;
-  author_name?: string;
-  color?: string;
-  duration?: number;
-  fallback?: string;
-  fields?: Field[];
-  file_size?: number | string;
-  footer?: string;
-  footer_icon?: string;
-  giphy?: GiphyData;
-  image_url?: string;
-  mime_type?: string;
-  og_scrape_url?: string;
-  original_height?: number;
-  original_width?: number;
-  pretext?: string;
-  text?: string;
-  title?: string;
-  title_link?: string;
-  type?: string;
-  waveform_data?: Array<number>;
-};
+    // old fields.
+    actions?: Action[];
+    asset_url?: string;
+    author_icon?: string;
+    author_link?: string;
+    author_name?: string;
+    color?: string;
+    duration?: number;
+    fallback?: string;
+    fields?: Field[];
+    file_size?: number | string;
+    footer?: string;
+    footer_icon?: string;
+    giphy?: GiphyData;
+    image_url?: string;
+    mime_type?: string;
+    og_scrape_url?: string;
+    original_height?: number;
+    original_width?: number;
+    pretext?: string;
+    text?: string;
+    title?: string;
+    title_link?: string;
+    type?: string;
+    waveform_data?: Array<number>;
+  };
 
 export type OGAttachment = {
   og_scrape_url: string;
@@ -2072,20 +2057,18 @@ export type ChannelConfigFields = {
   url_enrichment?: boolean;
 };
 
-export type ChannelConfigWithInfo<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ChannelConfigFields &
-  CreatedAtUpdatedAt & {
-    commands?: CommandResponse<ErmisChatGenerics>[];
-  };
+export type ChannelConfigWithInfo<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ChannelConfigFields &
+    CreatedAtUpdatedAt & {
+      commands?: CommandResponse<ErmisChatGenerics>[];
+    };
 
-export type ChannelData<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['channelType'] & {
-  members?: string[];
-  name?: string;
-  is_pinned?: boolean;
-};
+export type ChannelData<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['channelType'] & {
+    members?: string[];
+    name?: string;
+    is_pinned?: boolean;
+  };
 
 export type ChannelMembership<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   banned?: boolean;
@@ -2443,6 +2426,12 @@ export type Message<ErmisChatGenerics extends ExtendableGenerics = DefaultGeneri
   sticker_url?: string;
 };
 
+export type EditMessage = {
+  text: string;
+  mentioned_all?: boolean;
+  mentioned_users?: string[];
+};
+
 export type PollMessage = {
   id?: string;
   text: string;
@@ -2450,25 +2439,24 @@ export type PollMessage = {
   poll_choices: string[];
 };
 
-export type MessageBase<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['messageType'] & {
-  id: string;
-  attachments?: Attachment<ErmisChatGenerics>[];
-  html?: string;
-  mml?: string;
-  parent_id?: string;
-  pin_expires?: string | null;
-  pinned?: boolean;
-  pinned_at?: string | null;
-  poll_id?: string;
-  quoted_message_id?: string;
-  show_in_channel?: boolean;
-  silent?: boolean;
-  text?: string;
-  user?: UserResponse<ErmisChatGenerics> | null;
-  user_id?: string;
-};
+export type MessageBase<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['messageType'] & {
+    id: string;
+    attachments?: Attachment<ErmisChatGenerics>[];
+    html?: string;
+    mml?: string;
+    parent_id?: string;
+    pin_expires?: string | null;
+    pinned?: boolean;
+    pinned_at?: string | null;
+    poll_id?: string;
+    quoted_message_id?: string;
+    show_in_channel?: boolean;
+    silent?: boolean;
+    text?: string;
+    user?: UserResponse<ErmisChatGenerics> | null;
+    user_id?: string;
+  };
 
 export type MessageLabel = 'deleted' | 'ephemeral' | 'error' | 'regular' | 'reply' | 'system';
 
@@ -2564,15 +2552,14 @@ export type RateLimitsInfo = {
 
 export type RateLimitsMap = Record<EndpointName, RateLimitsInfo>;
 
-export type Reaction<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['reactionType'] & {
-  type: string;
-  message_id?: string;
-  score?: number;
-  user?: UserResponse<ErmisChatGenerics> | null;
-  user_id?: string;
-};
+export type Reaction<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['reactionType'] & {
+    type: string;
+    message_id?: string;
+    score?: number;
+    user?: UserResponse<ErmisChatGenerics> | null;
+    user_id?: string;
+  };
 
 export type Resource =
   | 'AddLinks'
@@ -3025,32 +3012,31 @@ export type UpdatePollAPIResponse<ErmisChatGenerics extends ExtendableGenerics =
   poll: PollResponse<ErmisChatGenerics>;
 };
 
-export type PollResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['pollType'] & {
-  answers_count: number;
-  created_at: string;
-  created_by: UserResponse<ErmisChatGenerics> | null;
-  created_by_id: string;
-  enforce_unique_vote: boolean;
-  id: string;
-  latest_answers: PollVote<ErmisChatGenerics>[];
-  latest_votes_by_option: Record<string, PollVote<ErmisChatGenerics>[]>;
-  max_votes_allowed: number;
-  name: string;
-  options: PollOption<ErmisChatGenerics>[];
-  updated_at: string;
-  vote_count: number;
-  vote_counts_by_option: Record<string, number>;
-  allow_answers?: boolean;
-  allow_user_suggested_options?: boolean;
-  channel?: ChannelAPIResponse<ErmisChatGenerics> | null;
-  cid?: string;
-  description?: string;
-  is_closed?: boolean;
-  own_votes?: PollVote<ErmisChatGenerics>[];
-  voting_visibility?: VotingVisibility;
-};
+export type PollResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['pollType'] & {
+    answers_count: number;
+    created_at: string;
+    created_by: UserResponse<ErmisChatGenerics> | null;
+    created_by_id: string;
+    enforce_unique_vote: boolean;
+    id: string;
+    latest_answers: PollVote<ErmisChatGenerics>[];
+    latest_votes_by_option: Record<string, PollVote<ErmisChatGenerics>[]>;
+    max_votes_allowed: number;
+    name: string;
+    options: PollOption<ErmisChatGenerics>[];
+    updated_at: string;
+    vote_count: number;
+    vote_counts_by_option: Record<string, number>;
+    allow_answers?: boolean;
+    allow_user_suggested_options?: boolean;
+    channel?: ChannelAPIResponse<ErmisChatGenerics> | null;
+    cid?: string;
+    description?: string;
+    is_closed?: boolean;
+    own_votes?: PollVote<ErmisChatGenerics>[];
+    voting_visibility?: VotingVisibility;
+  };
 
 export type PollOption<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   created_at: string;
@@ -3087,13 +3073,12 @@ export type PartialPollUpdate<ErmisChatGenerics extends ExtendableGenerics = Def
   unset?: Array<keyof PollResponse<ErmisChatGenerics>>;
 };
 
-export type PollOptionData<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['pollType'] & {
-  text: string;
-  id?: string;
-  position?: number;
-};
+export type PollOptionData<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['pollType'] & {
+    text: string;
+    id?: string;
+    position?: number;
+  };
 
 export type PartialPollOptionUpdate<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   set?: Partial<PollOptionResponse<ErmisChatGenerics>>;
@@ -3115,25 +3100,22 @@ export type CreatePollOptionAPIResponse<ErmisChatGenerics extends ExtendableGene
   poll_option: PollOptionResponse<ErmisChatGenerics>;
 };
 
-export type GetPollOptionAPIResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = CreatePollOptionAPIResponse<ErmisChatGenerics>;
-export type UpdatePollOptionAPIResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = CreatePollOptionAPIResponse<ErmisChatGenerics>;
+export type GetPollOptionAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  CreatePollOptionAPIResponse<ErmisChatGenerics>;
+export type UpdatePollOptionAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  CreatePollOptionAPIResponse<ErmisChatGenerics>;
 
-export type PollOptionResponse<
-  ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
-> = ErmisChatGenerics['pollType'] & {
-  created_at: string;
-  id: string;
-  poll_id: string;
-  position: number;
-  text: string;
-  updated_at: string;
-  vote_count: number;
-  votes?: PollVote<ErmisChatGenerics>[];
-};
+export type PollOptionResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
+  ErmisChatGenerics['pollType'] & {
+    created_at: string;
+    id: string;
+    poll_id: string;
+    position: number;
+    text: string;
+    updated_at: string;
+    vote_count: number;
+    votes?: PollVote<ErmisChatGenerics>[];
+  };
 
 export type PollVote<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   created_at: string;

@@ -1238,11 +1238,19 @@ await channel.sendFile(file);
 The edit message feature enables users to modify and update the content of a previously sent message in a chat
 
 ```javascript
-const message_id = '99873843-757f-4b3a-95d0-0773314fb115';
-const text = 'Hello';
+const old_message_id = '99873843-757f-4b3a-95d0-0773314fb115';
+const message = {
+  text: 'Hello',
+  // Add other fields you want to update (mentioned_all, mentioned_users)
+};
 
-await channel.editMessage(message_id, text);
+await channel.editMessage(old_message_id, message);
 ```
+
+| Name           | Type   | Required | Description                                                                             |
+| :------------- | :----- | :------- | :-------------------------------------------------------------------------------------- |
+| old_message_id | string | Yes      | The ID of the message you want to edit                                                  |
+| message        | object | Yes      | The new message content and fields to update: `text` `mentioned_all`, `mentioned_users` |
 
 **Response**
 

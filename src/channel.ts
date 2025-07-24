@@ -68,6 +68,7 @@ import {
   Attachment,
   AttachmentResponse,
   PollMessage,
+  EditMessage,
 } from './types';
 import { Role } from './permissions';
 
@@ -245,13 +246,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     );
   }
 
-  async editMessage(messageID: string, text: string) {
-    return await this.getClient().post(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageID}`, {
-      message: {
-        // mentioned_all: true,
-        // mentioned_users:  ["0x75c4ff25f1d81803675f687d52a4906855d61ad8"],
-        text,
-      },
+  async editMessage(oldMessageID: string, message: EditMessage) {
+    return await this.getClient().post(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${oldMessageID}`, {
+      message,
     });
   }
 
@@ -1689,7 +1686,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   // eslint-disable-next-line sonarjs/cognitive-complexity
-  _handleChannelEvent(event: Event<ErmisChatGenerics>) {
+  async _handleChannelEvent(event: Event<ErmisChatGenerics>) {
     const channel = this;
     this._client.logger(
       'info',
@@ -1774,14 +1771,22 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           /* if message belongs to current user, always assume timestamp is changed to filter it out and add again to avoid duplication */
           const ownMessage = event.user?.id === this.getClient().user?.id;
           const isThreadMessage = event.message.parent_id && !event.message.show_in_channel;
-          const userEvent = getUserInfo(event.user?.id || '', users);
-          const userMsg = getUserInfo(event.user?.id || '', users);
-          event.message.user = userMsg;
+
+          const existUser = users.find((user) => user.id === event.user?.id);
+          if (!existUser) {
+            if (event.user?.id) {
+              const resUser = await this.getClient().queryUser(event.user.id);
+              users.push(resUser);
+            }
+          }
+
+          const userInfo = getUserInfo(event.user?.id || '', users);
+          event.message.user = userInfo;
           if (event.message?.quoted_message) {
             const quotedUser = getUserInfo(event.message.quoted_message.user?.id || '', users);
             event.message.quoted_message.user = quotedUser;
           }
-          event.user = userEvent;
+          event.user = userInfo;
 
           if (this.state.isUpToDate || isThreadMessage) {
             channelState.addMessageSorted(event.message, ownMessage);
