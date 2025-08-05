@@ -1622,6 +1622,19 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     return await this.getClient().removePollVote(messageId, pollId, voteId);
   }
 
+  async enableTopics() {
+    return await this.getClient().post(this.getClient().baseURL + `/channels/${this.type}/${this.id}/topics/enable`, {
+      project_id: this.getClient().projectId,
+      messages: { limit: 25 },
+    });
+  }
+
+  async disableTopics() {
+    return await this.getClient().post(this.getClient().baseURL + `/channels/${this.type}/${this.id}/topics/disable`, {
+      project_id: this.getClient().projectId,
+    });
+  }
+
   /**
    * on - Listen to events on this channel.
    *
@@ -2100,6 +2113,18 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         if (channel.data) {
           channel.data.is_pinned = false;
         }
+        break;
+      case 'channel.topic.disabled':
+        if (channel.data) {
+          channel.data.topics_enabled = false;
+        }
+        event.user = getUserInfo(event.user?.id || '', users);
+        break;
+      case 'channel.topic.enabled':
+        if (channel.data) {
+          channel.data.topics_enabled = true;
+        }
+        event.user = getUserInfo(event.user?.id || '', users);
         break;
       default:
     }

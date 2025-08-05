@@ -300,6 +300,7 @@ export type ChannelResponse<ErmisChatGenerics extends ExtendableGenerics = Defau
     member_message_cooldown?: number;
     member_capabilities?: string[];
     is_pinned?: boolean;
+    topics_enabled?: boolean;
   };
 
 export type QueryReactionsOptions = Pager;

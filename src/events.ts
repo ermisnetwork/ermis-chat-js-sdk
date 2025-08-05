@@ -68,4 +68,6 @@ export const EVENT_MAP = {
   'connection.recovered': true,
   'transport.changed': true,
   'capabilities.changed': true,
+  'channel.topic.disabled': true,
+  'channel.topic.enabled': true,
 };
