@@ -2003,11 +2003,21 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         }
         break;
       case 'reaction.deleted':
-        if (event.reaction) {
+        event.user = getUserInfo(event.user?.id || '', users);
+        if (event.message) {
           if (event.message?.quoted_message) {
             const quotedUser = getUserInfo(event.message.quoted_message.user?.id || '', users);
             event.message.quoted_message.user = quotedUser;
           }
+          event.message.user = getUserInfo(event.message.user?.id || '', users);
+          event.message.latest_reactions?.map((item) => {
+            item.user = getUserInfo(item.user?.id || '', users);
+            return item;
+          });
+        }
+
+        if (event.reaction) {
+          event.reaction.user = getUserInfo(event.reaction.user?.id || '', users);
           event.message = channelState.removeReaction(event.reaction, event.message);
         }
         break;
@@ -2047,6 +2057,13 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       case 'member.joined':
       case 'notification.invite_accepted':
         if (event.member?.user_id) {
+          const existUser = users.find((user) => user.id === event.member?.user_id);
+
+          if (!existUser) {
+            const resUser = await this.getClient().queryUser(event.member?.user_id);
+            users.push(resUser);
+          }
+
           const user = getUserInfo(event.member.user_id, users);
           event.member.user = user;
 
