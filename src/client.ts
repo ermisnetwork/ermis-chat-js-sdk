@@ -507,7 +507,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       'Content-Type': 'application/json',
     };
     if (data.token) {
-      headers['Authorization'] = `${data.token}`;
+      const tokenStr = data.token.startsWith('Bearer ') ? data.token : `Bearer ${data.token}`;
+      headers['Authorization'] = tokenStr;
     }
     const response = await fetch(`${url}?${query}`, {
       method: 'GET',
