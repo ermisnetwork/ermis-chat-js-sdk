@@ -327,6 +327,7 @@ export type ChannelAPIResponse<ErmisChatGenerics extends ExtendableGenerics = De
   pending_messages?: PendingMessageResponse<ErmisChatGenerics>[];
   read?: ReadResponse<ErmisChatGenerics>[];
   threads?: ThreadResponse[];
+  topics?: QueryChannelAPIResponse<ErmisChatGenerics>[];
   watcher_count?: number;
   watchers?: UserResponse<ErmisChatGenerics>[];
   is_pinned?: boolean;
@@ -828,6 +829,7 @@ export type UserResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultG
   shadow_banned?: boolean;
   updated_at?: string;
   project_id?: string;
+  image?: string;
 };
 export type Contact = {
   project_id: string;

@@ -63,6 +63,7 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
     isLatest: boolean;
     messages: Array<ReturnType<ChannelState<ErmisChatGenerics>['formatMessage']>>;
   }[] = [];
+  topics?: Channel<ErmisChatGenerics>[] = [];
   constructor(channel: Channel<ErmisChatGenerics>) {
     this._channel = channel;
     this.watcher_count = 0;
@@ -354,12 +355,12 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
 
   removeQuotedMessageReferences(message: MessageResponse<ErmisChatGenerics>) {
     const parseMessage = (m: ReturnType<ChannelState<ErmisChatGenerics>['formatMessage']>) =>
-      (({
+      ({
         ...m,
         created_at: m.created_at.toISOString(),
         pinned_at: m.pinned_at?.toISOString(),
         updated_at: m.updated_at?.toISOString(),
-      } as unknown) as MessageResponse<ErmisChatGenerics>);
+      } as unknown as MessageResponse<ErmisChatGenerics>);
 
     this.messageSets.forEach((set) => {
       const updatedMessages = set.messages
@@ -641,7 +642,7 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
            * In case of hard delete, we need to strip down all text, html,
            * attachments and all the custom properties on message
            */
-          messages[i] = ({
+          messages[i] = {
             cid: m.cid,
             created_at: m.created_at,
             deleted_at: user.deleted_at,
@@ -656,7 +657,7 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
             type: 'deleted',
             updated_at: m.updated_at,
             user: m.user,
-          } as unknown) as ReturnType<ChannelState<ErmisChatGenerics>['formatMessage']>;
+          } as unknown as ReturnType<ChannelState<ErmisChatGenerics>['formatMessage']>;
         } else {
           messages[i] = {
             ...m,

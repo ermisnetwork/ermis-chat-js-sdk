@@ -720,6 +720,37 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   /**
+   * _processTopics - Process and enrich topics with user information
+   * @param state QueryChannelAPIResponse state containing topics
+   * @param users Array of user objects for enrichment
+   */
+  async _processTopics(state: any, users: any[]) {
+    state.topics = state.topics.map((topic: any) => {
+      // Enrich topic members with user info
+      if (topic.channel && topic.channel.members) {
+        topic.channel.members = enrichWithUserInfo(topic.channel.members, users);
+      }
+      // Enrich topic messages with user info
+      if (topic.messages) {
+        topic.messages = enrichWithUserInfo(topic.messages, users);
+      }
+      // Enrich topic pinned messages with user info
+      if (topic.pinned_messages) {
+        topic.pinned_messages = enrichWithUserInfo(topic.pinned_messages, users);
+      }
+      // Enrich topic read with user info
+      if (topic.read) {
+        topic.read = enrichWithUserInfo(topic.read, users);
+      }
+      return topic;
+    });
+
+    const { channels } = await this.getClient().hydrateChannels(state.topics, {});
+    // Store topics in channel state
+    this.state.topics = channels;
+  }
+
+  /**
    * mute - mutes the current channel
    * @param {{ user_id?: string, expiration?: string }} opts expiration in minutes or user_id
    * @return {Promise<MuteChannelAPIResponse<ErmisChatGenerics>>} The server response
@@ -957,6 +988,12 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     state.messages = enrichWithUserInfo(state.messages, users);
     state.pinned_messages = state.pinned_messages ? enrichWithUserInfo(state.pinned_messages, users) : [];
     state.read = enrichWithUserInfo(state.read || [], users);
+
+    // Process topics for team channels (already handled in query, but ensuring consistency)
+    if (this.type === 'team' && state.channel.topics_enabled && state.topics) {
+      await this._processTopics(state, users);
+    }
+
     this.data = state.channel;
 
     this._client.logger('info', `channel:watch() - started watching channel ${this.cid}`, {
@@ -1170,6 +1207,23 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     }
   };
 
+  async createTopic(data: any) {
+    const project_id = this._client.projectId;
+    const uuid = randomId();
+    const topicID = `${project_id}:${uuid}`;
+
+    const queryURL = `${this.getClient().baseURL}/channels/topic/${topicID}`;
+    const payload: any = {
+      project_id,
+      parent_cid: this.cid,
+      data: { ...data },
+    };
+
+    const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', payload);
+
+    return state;
+  }
+
   /**
    * query - Query the API, get messages, members or other channel fields
    *
@@ -1225,6 +1279,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     state.pinned_messages = state.pinned_messages ? enrichWithUserInfo(state.pinned_messages, users) : [];
     state.read = enrichWithUserInfo(state.read || [], users);
     state.channel.is_pinned = state.is_pinned || false;
+
+    // Process topics for team channels
+    if (this.type === 'team' && state.channel.topics_enabled && state.topics) {
+      await this._processTopics(state, users);
+    }
 
     // update the channel id if it was missing
 
@@ -2290,6 +2349,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         return acc;
       }, {} as ChannelState<ErmisChatGenerics>['members']);
     }
+
+    // Initialize topics for team channels
+    // if (state.topics) {
+    //   this.state.topics = state.topics;
+    // }
 
     return {
       messageSet,
