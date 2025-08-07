@@ -96,10 +96,10 @@ export class TokenManager<ErmisChatGenerics extends ExtendableGenerics = Default
       // Allow empty token for anonymous users
       if (user.anon && tokenOrProvider === '') return;
 
-      const tokenUserId = UserFromToken(tokenOrProvider);
-      if (tokenOrProvider != null && (tokenUserId == null || tokenUserId === '' || tokenUserId !== user.id)) {
-        throw new Error('userToken does not have a user_id or is not matching with user.id');
-      }
+      // const tokenUserId = UserFromToken(tokenOrProvider);
+      // if (tokenOrProvider != null && (tokenUserId == null || tokenUserId === '' || tokenUserId !== user.id)) {
+      //   throw new Error('userToken does not have a user_id or is not matching with user.id');
+      // }
     }
   };
 
