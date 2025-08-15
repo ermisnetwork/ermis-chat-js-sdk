@@ -157,7 +157,8 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           if (error.response.data.ermis_code === 20) {
             this.onError('Recipient was busy');
           } else {
-            this.onError('Call Failed');
+            const errMsg = error.response.data?.message ? error.response.data?.message : 'Call failed';
+            this.onError(errMsg);
           }
         }
       }
@@ -622,6 +623,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
         if (upgraderInfo && typeof this.onUpgradeCall === 'function') {
           this.onUpgradeCall(upgraderInfo);
+          this.callType = 'video'; // Upgrade call type to video
         }
 
         if (upgradeUserId === this.userID) {
@@ -838,7 +840,8 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
             type: 'transciver_state',
             body: {
               audio_enable: enabled,
-              video_enable: this.localStream.getVideoTracks().some((track) => track.enabled),
+              video_enable: this.callType === 'video',
+              // video_enable: this.localStream.getVideoTracks().some((track) => track.enabled),
             },
           }),
         );
