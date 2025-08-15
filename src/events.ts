@@ -70,4 +70,7 @@ export const EVENT_MAP = {
   'capabilities.changed': true,
   'channel.topic.disabled': true,
   'channel.topic.enabled': true,
+  'channel.topic.created': true,
+  'channel.topic.closed': true,
+  'channel.topic.reopen': true,
 };

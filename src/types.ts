@@ -301,6 +301,7 @@ export type ChannelResponse<ErmisChatGenerics extends ExtendableGenerics = Defau
     member_capabilities?: string[];
     is_pinned?: boolean;
     topics_enabled?: boolean;
+    is_closed_topic?: boolean;
   };
 
 export type QueryReactionsOptions = Pager;
@@ -1475,13 +1476,17 @@ export type ChannelFilters<ErmisChatGenerics extends ExtendableGenerics = Defaul
           }>[Key]
         >;
   } & {
-    roles?: RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'> | PrimitiveFilter<string[]>>;
+    roles?: string[];
   } & {
-    other_roles?: RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'> | PrimitiveFilter<string[]>>;
+    other_roles?: string[];
   } & {
-    project_id?: RequireOnlyOne<Pick<QueryFilter<string>, '$eq'> | PrimitiveFilter<string>>;
+    project_id?: string;
   } & {
-    blocked?: RequireOnlyOne<Pick<QueryFilter<boolean>, '$eq'> | PrimitiveFilter<boolean>>;
+    blocked?: boolean;
+  } & {
+    parent_id?: string;
+  } & {
+    include_parent?: boolean;
   }
 >;
 

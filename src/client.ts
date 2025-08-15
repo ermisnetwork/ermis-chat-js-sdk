@@ -1953,7 +1953,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       },
     });
 
-    const { channels, userIds } = await this.hydrateChannels(data.channels, stateOptions);
+    const { channels, userIds } = this.hydrateChannels(data.channels, stateOptions);
 
     // if (userIds.length > 0) {
     //   await this.getBatchUsers(userIds);
@@ -1991,7 +1991,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     const data = await this.post<QueryChannelsAPIResponse<ErmisChatGenerics>>(this.baseURL + '/channels', payload);
 
-    const { channels, userIds } = await this.hydrateChannels(data.channels, stateOptions);
+    const { channels, userIds } = this.hydrateChannels(data.channels, stateOptions);
 
     if (userIds.length > 0) {
       await this.getBatchUsers(userIds);
@@ -2041,7 +2041,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     );
   }
 
-  async hydrateChannels(
+  hydrateChannels(
     channelsFromApi: ChannelAPIResponse<ErmisChatGenerics>[] = [],
     stateOptions: ChannelStateOptions = {},
   ) {
@@ -2078,9 +2078,23 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       channels.push(c);
     }
 
+    const sortedChannels = channels.sort((a: any, b: any) => {
+      const aTime = a.state.last_message_at
+        ? new Date(a.state.last_message_at).getTime()
+        : a.data.created_at
+        ? new Date(a.data.created_at).getTime()
+        : 0;
+      const bTime = b.state.last_message_at
+        ? new Date(b.state.last_message_at).getTime()
+        : b.data.created_at
+        ? new Date(b.data.created_at).getTime()
+        : 0;
+      return bTime - aTime; // Descending order
+    });
+
     // ensure we have the users for all the channels we just added
 
-    return { channels, userIds };
+    return { channels: sortedChannels, userIds };
   }
 
   /**

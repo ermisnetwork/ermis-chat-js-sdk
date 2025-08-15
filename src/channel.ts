@@ -724,8 +724,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @param state QueryChannelAPIResponse state containing topics
    * @param users Array of user objects for enrichment
    */
-  async _processTopics(state: any, users: any[]) {
-    state.topics = state.topics.map((topic: any) => {
+  _processTopics(topicsFromApi: any, users: any[]) {
+    const topics = topicsFromApi.map((topic: any) => {
       // Enrich topic members with user info
       if (topic.channel && topic.channel.members) {
         topic.channel.members = enrichWithUserInfo(topic.channel.members, users);
@@ -745,7 +745,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       return topic;
     });
 
-    const { channels } = await this.getClient().hydrateChannels(state.topics, {});
+    const { channels } = this.getClient().hydrateChannels(topics, {});
+
     // Store topics in channel state
     this.state.topics = channels;
   }
@@ -991,7 +992,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
     // Process topics for team channels (already handled in query, but ensuring consistency)
     if (this.type === 'team' && state.channel.topics_enabled && state.topics) {
-      await this._processTopics(state, users);
+      this._processTopics(state.topics, users);
     }
 
     this.data = state.channel;
@@ -1281,9 +1282,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     state.channel.is_pinned = state.is_pinned || false;
 
     // Process topics for team channels
-    if (this.type === 'team' && state.channel.topics_enabled && state.topics) {
-      await this._processTopics(state, users);
-    }
+    // if (this.type === 'team' && state.channel.topics_enabled && state.topics) {
+    //   this._processTopics(state.topics, users);
+    // }
 
     // update the channel id if it was missing
 
@@ -1691,6 +1692,20 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   async disableTopics() {
     return await this.getClient().post(this.getClient().baseURL + `/channels/${this.type}/${this.id}/topics/disable`, {
       project_id: this.getClient().projectId,
+    });
+  }
+
+  async closeTopic(topicCID: string) {
+    return await this.getClient().post(this.getClient().baseURL + `/channels/${this.type}/${this.id}/topics/close`, {
+      project_id: this.getClient().projectId,
+      topic_cid: topicCID,
+    });
+  }
+
+  async reopenTopic(topicCID: string) {
+    return await this.getClient().post(this.getClient().baseURL + `/channels/${this.type}/${this.id}/topics/reopen`, {
+      project_id: this.getClient().projectId,
+      topic_cid: topicCID,
     });
   }
 
@@ -2202,6 +2217,33 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         }
         event.user = getUserInfo(event.user?.id || '', users);
         break;
+      case 'channel.topic.created':
+        const members = event.channel?.members || [];
+        const enrichedMembers = enrichWithUserInfo(members, users);
+
+        const topicState: any = {
+          channel: event.channel,
+          members: enrichedMembers,
+          messages: [],
+          pinned_messages: [],
+        };
+        const topic = this.getClient().channel(event.channel_type || '', event.channel_id);
+        topic.data = event.channel;
+        topic._initializeState(topicState, 'latest');
+        channelState.topics?.unshift(topic);
+        break;
+      case 'channel.topic.closed':
+        if (channel.data) {
+          channel.data.is_closed_topic = true;
+        }
+        event.user = getUserInfo(event.user?.id || '', users);
+        break;
+      case 'channel.topic.reopen':
+        if (channel.data) {
+          channel.data.is_closed_topic = false;
+        }
+        event.user = getUserInfo(event.user?.id || '', users);
+        break;
       default:
     }
 
@@ -2257,7 +2299,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     updateUserIds?: (id: string) => void,
   ) {
     const { state: clientState, user, userID } = this.getClient();
-
     // add the Users
     if (state.channel.members) {
       for (const member of state.channel.members) {
@@ -2276,6 +2317,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     const map = new Map();
     const uniqueMessages = [];
 
+    if (!state.messages) {
+      state.messages = [];
+    }
     for (const msg of state.messages) {
       if (!map.has(msg.id)) {
         map.set(msg.id, true);
@@ -2350,10 +2394,11 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       }, {} as ChannelState<ErmisChatGenerics>['members']);
     }
 
-    // Initialize topics for team channels
-    // if (state.topics) {
-    //   this.state.topics = state.topics;
-    // }
+    // Process topics for team channels
+    if (state.channel.type === 'team' && state.channel.topics_enabled && state.topics) {
+      const users = Object.values(this.getClient().state.users);
+      this._processTopics(state.topics, users);
+    }
 
     return {
       messageSet,
