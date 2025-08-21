@@ -1929,12 +1929,44 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     const data = await this.post<QueryChannelsAPIResponse<ErmisChatGenerics>>(this.baseURL + '/channels', payload);
 
+    // Sort channels by latest message created_at (including topics if present)
+    data.channels.sort((a, b) => {
+      // Helper to get latest created_at from messages array
+      const getLatestCreatedAt = (messages: any[] = []) =>
+        messages.length > 0 ? Math.max(...messages.map((msg) => new Date(msg.created_at).getTime())) : 0;
+
+      // Get latest message created_at in channel a
+      let aLatest = getLatestCreatedAt(a.messages);
+
+      // If channel a has topics, check messages in topics
+      if (a.channel.type === 'team' && Array.isArray(a.topics)) {
+        for (const topic of a.topics) {
+          aLatest = Math.max(aLatest, getLatestCreatedAt(topic.messages));
+        }
+      }
+
+      // Get latest message created_at in channel b
+      let bLatest = getLatestCreatedAt(b.messages);
+
+      // If channel b has topics, check messages in topics
+      if (b.channel.type === 'team' && Array.isArray(b.topics)) {
+        for (const topic of b.topics) {
+          bLatest = Math.max(bLatest, getLatestCreatedAt(topic.messages));
+        }
+      }
+
+      // Descending order (newest first)
+      return bLatest - aLatest;
+    });
+
     const memberIds =
       Array.from(
         new Set(data.channels.flatMap((c) => (c.channel.members || []).map((member: any) => member.user.id))),
       ) || [];
 
-    const membersInfo = await this.getBatchUsers(memberIds);
+    const membersInfo = filterConditions.parent_cid
+      ? Object.values(this.state.users)
+      : await this.getBatchUsers(memberIds);
     data.channels.forEach((c) => {
       c.channel.members = enrichWithUserInfo(c.channel.members, membersInfo);
       c.messages = enrichWithUserInfo(c.messages, membersInfo);
@@ -2078,23 +2110,23 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       channels.push(c);
     }
 
-    const sortedChannels = channels.sort((a: any, b: any) => {
-      const aTime = a.state.last_message_at
-        ? new Date(a.state.last_message_at).getTime()
-        : a.data.created_at
-        ? new Date(a.data.created_at).getTime()
-        : 0;
-      const bTime = b.state.last_message_at
-        ? new Date(b.state.last_message_at).getTime()
-        : b.data.created_at
-        ? new Date(b.data.created_at).getTime()
-        : 0;
-      return bTime - aTime; // Descending order
-    });
+    // const sortedChannels = channels.sort((a: any, b: any) => {
+    //   const aTime = a.state.last_message_at
+    //     ? new Date(a.state.last_message_at).getTime()
+    //     : a.data.created_at
+    //     ? new Date(a.data.created_at).getTime()
+    //     : 0;
+    //   const bTime = b.state.last_message_at
+    //     ? new Date(b.state.last_message_at).getTime()
+    //     : b.data.created_at
+    //     ? new Date(b.data.created_at).getTime()
+    //     : 0;
+    //   return bTime - aTime; // Descending order
+    // });
 
     // ensure we have the users for all the channels we just added
 
-    return { channels: sortedChannels, userIds };
+    return { channels, userIds };
   }
 
   /**

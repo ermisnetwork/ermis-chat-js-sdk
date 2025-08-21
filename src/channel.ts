@@ -1709,6 +1709,28 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     });
   }
 
+  async editTopic(topicCID: string, data: any) {
+    const response: any = await this.getClient().post(
+      this.getClient().baseURL + `/channels/${this.type}/${this.id}/topics`,
+      {
+        project_id: this.getClient().projectId,
+        topic_cid: topicCID,
+        data,
+      },
+    );
+
+    if (response) {
+      const activeTopic = this.getClient().activeChannels[topicCID];
+
+      if (activeTopic) {
+        activeTopic.data = response.channel;
+        return activeTopic.data;
+      } else {
+        return response.channel;
+      }
+    }
+  }
+
   /**
    * on - Listen to events on this channel.
    *
