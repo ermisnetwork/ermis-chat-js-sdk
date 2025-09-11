@@ -906,10 +906,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   async markRead(data: MarkReadOptions<ErmisChatGenerics> = {}) {
     this._checkInitialized();
 
-    // if (!this.getConfig()?.read_events && !this.getClient()._isUsingServerAuth()) {
-    //   return Promise.resolve(null);
-    // }
-
     return await this.getClient().post<EventAPIResponse<ErmisChatGenerics>>(this._channelURL() + '/read', {
       ...data,
     });
@@ -924,7 +920,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   async markUnread(data: MarkUnreadOptions<ErmisChatGenerics>) {
     this._checkInitialized();
 
-    if (!this.getConfig()?.read_events && !this.getClient()._isUsingServerAuth()) {
+    if (!this.getConfig()?.read_events) {
       return Promise.resolve(null);
     }
 
@@ -1457,22 +1453,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   /**
-   * banUser - Bans a user from a channel
-   *
-   * @param {string} targetUserID
-   * @param {BanUserOptions<ErmisChatGenerics>} options
-   * @returns {Promise<APIResponse>}
-   */
-  async banUser(targetUserID: string, options: BanUserOptions<ErmisChatGenerics>) {
-    this._checkInitialized();
-    return await this.getClient().banUser(targetUserID, {
-      ...options,
-      type: this.type,
-      id: this.id,
-    });
-  }
-
-  /**
    * hides the channel from queryChannels for the user until a message is added
    * If clearHistory is set to true - all messages will be removed for the user
    *
@@ -1499,50 +1479,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     this._checkInitialized();
     return await this.getClient().post<APIResponse>(`${this._channelURL()}/show`, {
       user_id: userId,
-    });
-  }
-
-  /**
-   * unbanUser - Removes the bans for a user on a channel
-   *
-   * @param {string} targetUserID
-   * @returns {Promise<APIResponse>}
-   */
-  async unbanUser(targetUserID: string) {
-    this._checkInitialized();
-    return await this.getClient().unbanUser(targetUserID, {
-      type: this.type,
-      id: this.id,
-    });
-  }
-
-  /**
-   * shadowBan - Shadow bans a user from a channel
-   *
-   * @param {string} targetUserID
-   * @param {BanUserOptions<ErmisChatGenerics>} options
-   * @returns {Promise<APIResponse>}
-   */
-  async shadowBan(targetUserID: string, options: BanUserOptions<ErmisChatGenerics>) {
-    this._checkInitialized();
-    return await this.getClient().shadowBan(targetUserID, {
-      ...options,
-      type: this.type,
-      id: this.id,
-    });
-  }
-
-  /**
-   * removeShadowBan - Removes the shadow ban for a user on a channel
-   *
-   * @param {string} targetUserID
-   * @returns {Promise<APIResponse>}
-   */
-  async removeShadowBan(targetUserID: string) {
-    this._checkInitialized();
-    return await this.getClient().removeShadowBan(targetUserID, {
-      type: this.type,
-      id: this.id,
     });
   }
 
@@ -1665,20 +1601,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         }
       });
     });
-  }
-
-  /**
-   * Cast or cancel one or more votes on a poll
-   * @param pollId string The poll id
-   * @param votes PollVoteData[] The votes that will be casted (or canceled in case of an empty array)
-   * @returns {APIResponse & PollVoteResponse} The poll votes
-   */
-  async vote(messageId: string, pollId: string, vote: PollVoteData) {
-    return await this.getClient().castPollVote(messageId, pollId, vote);
-  }
-
-  async removeVote(messageId: string, pollId: string, voteId: string) {
-    return await this.getClient().removePollVote(messageId, pollId, voteId);
   }
 
   async enableTopics() {
@@ -2306,7 +2228,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   };
 
   _checkInitialized() {
-    if (!this.initialized && !this.offlineMode && !this.getClient()._isUsingServerAuth()) {
+    if (!this.initialized && !this.offlineMode) {
       throw Error(
         `Channel ${this.cid} hasn't been initialized yet. Make sure to call .watch() and wait for it to resolve`,
       );
