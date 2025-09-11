@@ -716,59 +716,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   disconnect = this.disconnectUser;
 
   /**
-   * connectAnonymousUser - Set an anonymous user and open a WebSocket connection
-   */
-  connectAnonymousUser = () => {
-    if (this.node && !this.options.allowServerSideConnect) {
-      console.warn(
-        'Please do not use connectUser server side. connectUser impacts MAU and concurrent connection usage and thus your bill. If you have a valid use-case, add "allowServerSideConnect: true" to the client options to disable this warning.',
-      );
-    }
-
-    this.userID = randomId();
-    const anonymousUser = {
-      id: this.userID,
-      anon: true,
-    } as UserResponse<ErmisChatGenerics>;
-
-    this._setToken(anonymousUser, '');
-    this._setUser(anonymousUser);
-
-    return this._setupConnection();
-  };
-
-  /**
-   * @deprecated Please use connectAnonymousUser. Its naming is more consistent with its functionality.
-   */
-  setAnonymousUser = this.connectAnonymousUser;
-
-  /**
-   * createToken - Creates a token to authenticate this user. This function is used server side.
-   * The resulting token should be passed to the client side when the users registers or logs in.
-   *
-   * @param {string} userID The User ID
-   * @param {number} [exp] The expiration time for the token expressed in the number of seconds since the epoch
-   *
-   * @return {string} Returns a token
-   */
-  createToken(userID: string, exp?: number, iat?: number) {
-    if (this.secret == null) {
-      throw Error(`tokens can only be created server-side using the API Secret`);
-    }
-    const extra: { exp?: number; iat?: number } = {};
-
-    if (exp) {
-      extra.exp = exp;
-    }
-
-    if (iat) {
-      extra.iat = iat;
-    }
-
-    return JWTUserToken(this.secret, userID, extra, {});
-  }
-
-  /**
    * on - Listen to events on all channels and users your watching
    *
    * client.on('message.new', event => {console.log("my new message", event, channel.state.messages)})
