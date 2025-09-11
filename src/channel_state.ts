@@ -39,7 +39,6 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
   pinnedMessages: Array<ReturnType<ChannelState<ErmisChatGenerics>['formatMessage']>>;
   pending_messages: Array<PendingMessageResponse<ErmisChatGenerics>>;
   threads: Record<string, Array<ReturnType<ChannelState<ErmisChatGenerics>['formatMessage']>>>;
-  mutedUsers: Array<UserResponse<ErmisChatGenerics>>;
   watchers: Record<string, UserResponse<ErmisChatGenerics>>;
   members: Record<string, ChannelMemberResponse<ErmisChatGenerics>>;
   unreadCount: number;
@@ -73,8 +72,6 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
     this.pinnedMessages = [];
     this.pending_messages = [];
     this.threads = {};
-    // a list of users to hide messages from
-    this.mutedUsers = [];
     this.watchers = {};
     this.members = {};
     this.membership = {};

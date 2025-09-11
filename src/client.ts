@@ -220,11 +220,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   activeChannels: {
     [key: string]: Channel<ErmisChatGenerics>;
   };
-  persistUserOnConnectionFailure?: boolean;
   axiosInstance: AxiosInstance;
   baseURL?: string;
   browser: boolean;
-  cleaningIntervalRef?: NodeJS.Timeout;
   clientID?: string;
   configs: Configs<ErmisChatGenerics>;
   key: string;
@@ -242,7 +240,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    */
   recoverStateOnReconnect?: boolean;
   mutedChannels: ChannelMute<ErmisChatGenerics>[];
-  mutedUsers: Mute<ErmisChatGenerics>[];
   node: boolean;
   options: ErmisChatOptions;
   secret?: string;
@@ -296,7 +293,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     this.state = new ClientState<ErmisChatGenerics>();
     // a list of channels to hide ws events from
     this.mutedChannels = [];
-    this.mutedUsers = [];
 
     // set the secret
     if (secretOrOptions && isString(secretOrOptions)) {
@@ -345,7 +341,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     // mapping between channel groups and configs
     this.configs = {};
-    this.persistUserOnConnectionFailure = this.options?.persistUserOnConnectionFailure;
 
     // If its a server-side client, then lets initialize the tokenManager, since token will be
     // generated from secret.
@@ -588,12 +583,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       await this.connectToSSE();
       return result;
     } catch (err) {
-      if (this.persistUserOnConnectionFailure) {
-        // cleanup client to allow the user to retry connectUser again
-        this.closeConnection();
-      } else {
-        this.disconnectUser();
-      }
+      this.disconnectUser();
       throw err;
     }
   };
@@ -638,11 +628,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    *                https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
    */
   closeConnection = async (timeout?: number) => {
-    if (this.cleaningIntervalRef != null) {
-      clearInterval(this.cleaningIntervalRef);
-      this.cleaningIntervalRef = undefined;
-    }
-
     await Promise.all([this.wsConnection?.disconnect(timeout), this.wsFallback?.disconnect(timeout)]);
     return Promise.resolve();
   };
@@ -672,7 +657,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     this.clientID = `${this.userID}--${randomId()}`;
     this.wsPromise = this.connect();
-    this._startCleaning();
     return this.wsPromise;
   };
 
@@ -1403,25 +1387,11 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       client.user = event.me;
       client.state.updateUser(event.me);
       // client.mutedChannels = event.me.channel_mutes;
-      // client.mutedUsers = event.me.mutes;
     }
 
     if (event.channel && event.type === 'notification.message_new') {
       this._addChannelConfig(event.channel);
     }
-
-    // if (event.type === 'notification.channel_mutes_updated' && event.me?.channel_mutes) {
-    //   this.mutedChannels = event.me.channel_mutes;
-    // }
-
-    // if (event.type === 'notification.mutes_updated' && event.me?.mutes) {
-    //   this.mutedUsers = event.me.mutes;
-    // }
-
-    // if (event.type === 'notification.mark_read' && event.unread_channels === 0) {
-    //   const activeChannelKeys = Object.keys(this.activeChannels);
-    //   activeChannelKeys.forEach((activeChannelKey) => (this.activeChannels[activeChannelKey].state.unreadCount = 0));
-    // }
 
     if ((event.type === 'channel.deleted' || event.type === 'notification.channel_deleted') && event.cid) {
       client.state.deleteAllChannelReference(event.cid);
@@ -2720,22 +2690,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     });
   }
 
-  /** userMuteStatus - check if a user is muted or not, can be used after connectUser() is called
-   *
-   * @param {string} targetID
-   * @returns {boolean}
-   */
-  userMuteStatus(targetID: string) {
-    if (!this.user || !this.wsPromise) {
-      throw new Error('Make sure to await connectUser() first.');
-    }
-
-    for (let i = 0; i < this.mutedUsers.length; i += 1) {
-      if (this.mutedUsers[i].target.id === targetID) return true;
-    }
-    return false;
-  }
-
   /**
    * flagMessage - flag a message
    * @param {string} targetMessageID
@@ -3346,19 +3300,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     if (!this.tokenManager) return null;
 
     return this.tokenManager.getToken();
-  }
-
-  _startCleaning() {
-    const that = this;
-    if (this.cleaningIntervalRef != null) {
-      return;
-    }
-    this.cleaningIntervalRef = setInterval(() => {
-      // call clean on the channel, used for calling the stop.typing event etc.
-      for (const channel of Object.values(that.activeChannels)) {
-        channel.clean();
-      }
-    }, 500);
   }
 
   /**
