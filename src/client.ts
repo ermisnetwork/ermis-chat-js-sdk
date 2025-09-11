@@ -109,7 +109,6 @@ import {
   ListImportsPaginationOptions,
   ListImportsResponse,
   Logger,
-  MarkChannelsReadOptions,
   Message,
   MessageFilters,
   MessageFlagsFilters,
@@ -2825,28 +2824,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   }
   // alias for backwards compatibility
   _unblockMessage = this.unblockMessage;
-
-  /**
-   * @deprecated use markChannelsRead instead
-   *
-   * markAllRead - marks all channels for this user as read
-   * @param {MarkAllReadOptions<ErmisChatGenerics>} [data]
-   *
-   * @return {Promise<APIResponse>}
-   */
-  markAllRead = this.markChannelsRead;
-
-  /**
-   * markChannelsRead - marks channels read -
-   * it accepts a map of cid:messageid pairs, if messageid is empty, the whole channel will be marked as read
-   *
-   * @param {MarkChannelsReadOptions <ErmisChatGenerics>} [data]
-   *
-   * @return {Promise<APIResponse>}
-   */
-  async markChannelsRead(data: MarkChannelsReadOptions<ErmisChatGenerics> = {}) {
-    await this.post<APIResponse>(this.baseURL + '/channels/read', { ...data });
-  }
 
   createCommand(data: CreateCommandOptions<ErmisChatGenerics>) {
     return this.post<CreateCommandResponse<ErmisChatGenerics>>(this.baseURL + '/commands', data);

@@ -1001,18 +1001,6 @@ export type InviteOptions<ErmisChatGenerics extends ExtendableGenerics = Default
   user_id?: string;
 };
 
-/** @deprecated use MarkChannelsReadOptions instead */
-export type MarkAllReadOptions<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
-  MarkChannelsReadOptions<ErmisChatGenerics>;
-
-export type MarkChannelsReadOptions<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
-  client_id?: string;
-  connection_id?: string;
-  read_by_channel?: Record<string, string>;
-  user?: UserResponse<ErmisChatGenerics>;
-  user_id?: string;
-};
-
 export type MarkReadOptions<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
   client_id?: string;
   connection_id?: string;
