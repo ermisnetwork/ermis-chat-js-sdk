@@ -220,7 +220,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   activeChannels: {
     [key: string]: Channel<ErmisChatGenerics>;
   };
-  anonymous: boolean;
   persistUserOnConnectionFailure?: boolean;
   axiosInstance: AxiosInstance;
   baseURL?: string;
@@ -346,7 +345,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     // mapping between channel groups and configs
     this.configs = {};
-    this.anonymous = false;
     this.persistUserOnConnectionFailure = this.options?.persistUserOnConnectionFailure;
 
     // If its a server-side client, then lets initialize the tokenManager, since token will be
@@ -475,7 +473,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     return await this.post<APIResponse>(this.baseURL + '/uss/v1/refresh_token', { refresh_token });
   }
   getAuthType() {
-    return this.anonymous ? 'anonymous' : 'jwt';
+    return 'jwt';
   }
 
   setBaseURL(baseURL: string) {
@@ -574,7 +572,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     // we generate the client id client side
     this.userID = user.id;
-    this.anonymous = false;
 
     const setTokenPromise = this._setToken(user, userTokenOrProvider);
     this._setUser(user);
@@ -856,9 +853,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     delete this.user;
     delete this._user;
     delete this.userID;
-
-    this.anonymous = false;
-
     const closePromise = this.closeConnection(timeout);
 
     for (const channel of Object.values(this.activeChannels)) {
@@ -893,7 +887,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       );
     }
 
-    this.anonymous = true;
     this.userID = randomId();
     const anonymousUser = {
       id: this.userID,
@@ -920,7 +913,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    */
   async setGuestUser(user: UserResponse<ErmisChatGenerics>) {
     let response: { access_token: string; user: UserResponse<ErmisChatGenerics> } | undefined;
-    this.anonymous = true;
     try {
       response = await this.post<
         APIResponse & {
@@ -929,10 +921,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         }
       >(this.baseURL + '/guest', { user });
     } catch (e) {
-      this.anonymous = false;
       throw e;
     }
-    this.anonymous = false;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { created_at, updated_at, last_active, online, ...guestUser } = response.user;
     return await this.connectUser(guestUser as UserResponse<ErmisChatGenerics>, response.access_token);
@@ -3353,7 +3343,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   }
 
   _getToken() {
-    if (!this.tokenManager || this.anonymous) return null;
+    if (!this.tokenManager) return null;
 
     return this.tokenManager.getToken();
   }
