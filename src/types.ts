@@ -1114,7 +1114,6 @@ export type ErmisChatOptions = AxiosRequestConfig & {
   baseURL?: string;
   browser?: boolean;
   device?: BaseDeviceFields;
-  enableInsights?: boolean;
   /** experimental feature, please contact support if you want this feature enabled for you */
   enableWSFallback?: boolean;
   logger?: Logger;

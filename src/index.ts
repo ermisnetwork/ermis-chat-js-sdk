@@ -9,7 +9,7 @@ export * from './events';
 export * from './permissions';
 export * from './signing';
 export * from './token_manager';
-export * from './insights';
+// export * from './insights';
 export * from './types';
 export * from './segment';
 export * from './campaign';

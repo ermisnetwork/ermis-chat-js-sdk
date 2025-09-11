@@ -206,7 +206,6 @@ import {
   GetTokenResponse,
   Contact,
 } from './types';
-import { InsightMetrics } from './insights';
 import { Thread } from './thread';
 
 function isString(x: unknown): x is string {
@@ -254,7 +253,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   wsFallback?: WSConnectionFallback<ErmisChatGenerics>;
   wsPromise: ConnectAPIResponse<ErmisChatGenerics> | null;
   consecutiveFailures: number;
-  insightMetrics: InsightMetrics;
   defaultWSTimeoutWithFallback: number;
   defaultWSTimeout: number;
 
@@ -346,7 +344,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     // generated from secret.
     this.tokenManager = new TokenManager(this.secret);
     this.consecutiveFailures = 0;
-    this.insightMetrics = new InsightMetrics();
 
     this.defaultWSTimeoutWithFallback = 6000;
     this.defaultWSTimeout = 15000;
@@ -1518,10 +1515,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     if (!this.clientID) {
       throw Error('clientID is not set');
     }
-
-    // if (!this.wsConnection && (this.options.warmUp || this.options.enableInsights)) {
-    //   this._sayHi();
-    // }
     // The StableWSConnection handles all the reconnection logic.
     if (this.options.wsConnection && this.node) {
       // Intentionally avoiding adding ts generics on wsConnection in options since its only useful for unit test purpose.
