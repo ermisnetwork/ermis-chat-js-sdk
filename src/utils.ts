@@ -11,7 +11,7 @@ import {
   ReactionGroupResponse,
 } from './types';
 import { AxiosRequestConfig } from 'axios';
-import { ErmisChat } from 'client';
+import { ErmisChat } from './client';
 
 /**
  * logChatPromiseExecution - utility function for logging the execution of a promise..

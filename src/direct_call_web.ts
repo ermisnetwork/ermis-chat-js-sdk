@@ -90,6 +90,21 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   /** Callback for error handling */
   onError?: (error: string) => void;
 
+  /** Callback for device list changes */
+  onDeviceChange?: (audioDevices: MediaDeviceInfo[], videoDevices: MediaDeviceInfo[]) => void;
+
+  /** Available audio input devices */
+  private availableAudioDevices: MediaDeviceInfo[] = [];
+
+  /** Available video input devices */
+  private availableVideoDevices: MediaDeviceInfo[] = [];
+
+  /** Currently selected audio device ID */
+  private selectedAudioDeviceId?: string;
+
+  /** Currently selected video device ID */
+  private selectedVideoDeviceId?: string;
+
   /** Timeout for ending call if not answered after a period */
   private missCallTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -131,6 +146,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     this.userID = client.userID;
 
     this.listenSocketEvents();
+    this.setupDeviceChangeListener();
   }
 
   private getClient(): ErmisChat<ErmisChatGenerics> {
@@ -165,16 +181,59 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     }
   }
 
-  private async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
-    // Get the list of available media devices
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    // Check if the device has a camera (video input)
-    const hasCamera = devices.some((device) => device.kind === 'videoinput');
+  private async getAvailableDevices(): Promise<{ audioDevices: MediaDeviceInfo[]; videoDevices: MediaDeviceInfo[] }> {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
 
-    // If the device has a camera, set video to true; otherwise, only get audio
+      const audioDevices = devices.filter((device) => device.kind === 'audioinput');
+      const videoDevices = devices.filter((device) => device.kind === 'videoinput');
+
+      this.availableAudioDevices = audioDevices;
+      this.availableVideoDevices = videoDevices;
+
+      return { audioDevices, videoDevices };
+    } catch (error) {
+      console.error('Error enumerating devices:', error);
+      return { audioDevices: [], videoDevices: [] };
+    }
+  }
+
+  private async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
+    // Get available devices first
+    const { audioDevices, videoDevices } = await this.getAvailableDevices();
+
+    // Notify UI about available devices
+    if (this.onDeviceChange) {
+      this.onDeviceChange(audioDevices, videoDevices);
+    }
+
+    const hasCamera = videoDevices.length > 0;
+
+    // Auto-select default devices if none selected
+    if (!this.selectedAudioDeviceId && audioDevices.length > 0) {
+      this.selectedAudioDeviceId = audioDevices[0].deviceId;
+    }
+    if (!this.selectedVideoDeviceId && videoDevices.length > 0) {
+      this.selectedVideoDeviceId = videoDevices[0].deviceId;
+    }
+
+    // Build constraints with specific device IDs if selected
+    const audioConstraints = constraints.audio
+      ? {
+          deviceId: this.selectedAudioDeviceId ? { exact: this.selectedAudioDeviceId } : undefined,
+        }
+      : false;
+
+    const videoConstraints =
+      hasCamera && constraints.video
+        ? {
+            deviceId: this.selectedVideoDeviceId ? { exact: this.selectedVideoDeviceId } : undefined,
+          }
+        : false;
+
     const finalConstraints: MediaStreamConstraints = {
-      audio: constraints.audio,
-      video: hasCamera ? constraints.video : false,
+      audio: audioConstraints,
+      video: videoConstraints,
     };
 
     try {
@@ -704,6 +763,38 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     this.cleanupCall();
   }
 
+  public async getDevices(): Promise<{ audioDevices: MediaDeviceInfo[]; videoDevices: MediaDeviceInfo[] }> {
+    // Return cached devices if available, otherwise fetch new ones
+    if (this.availableAudioDevices.length > 0 || this.availableVideoDevices.length > 0) {
+      return {
+        audioDevices: this.availableAudioDevices,
+        videoDevices: this.availableVideoDevices,
+      };
+    }
+    return await this.getAvailableDevices();
+  }
+
+  // Get current selected devices info
+  public getSelectedDevices(): { audioDevice?: MediaDeviceInfo; videoDevice?: MediaDeviceInfo } {
+    const audioDevice = this.selectedAudioDeviceId
+      ? this.availableAudioDevices.find((device) => device.deviceId === this.selectedAudioDeviceId)
+      : undefined;
+
+    const videoDevice = this.selectedVideoDeviceId
+      ? this.availableVideoDevices.find((device) => device.deviceId === this.selectedVideoDeviceId)
+      : undefined;
+
+    return { audioDevice, videoDevice };
+  }
+
+  // Get default devices (first available device)
+  public getDefaultDevices(): { audioDevice?: MediaDeviceInfo; videoDevice?: MediaDeviceInfo } {
+    return {
+      audioDevice: this.availableAudioDevices[0],
+      videoDevice: this.availableVideoDevices[0],
+    };
+  }
+
   public async createCall(callType: string, cid: string) {
     this.cid = cid;
     return await this._sendSignal({ action: CallAction.CREATE_CALL, cid, is_video: callType === 'video' });
@@ -867,5 +958,127 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         );
       }
     }
+  }
+
+  // Public method to switch audio device
+  public async switchAudioDevice(deviceId: string): Promise<boolean> {
+    try {
+      // Validate device exists in available devices
+      const targetDevice = this.availableAudioDevices.find((device) => device.deviceId === deviceId);
+      if (!targetDevice) {
+        console.error('Audio device not found:', deviceId);
+        if (this.onError) {
+          this.onError('Selected microphone not found');
+        }
+        return false;
+      }
+
+      this.selectedAudioDeviceId = deviceId;
+
+      if (!this.localStream) return false;
+
+      // Get new audio stream with selected device
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: deviceId } },
+        video: false,
+      });
+
+      const newAudioTrack = newStream.getAudioTracks()[0];
+      const oldAudioTrack = this.localStream.getAudioTracks()[0];
+
+      // Replace audio track in peer connection
+      if (this.peer && oldAudioTrack) {
+        const sender = this.peer.getSenders().find((s) => s.track === oldAudioTrack);
+        if (sender) {
+          await sender.replaceTrack(newAudioTrack);
+        }
+      }
+
+      // Replace audio track in local stream
+      if (oldAudioTrack) {
+        this.localStream.removeTrack(oldAudioTrack);
+        oldAudioTrack.stop();
+      }
+      this.localStream.addTrack(newAudioTrack);
+
+      // Update UI
+      if (this.onLocalStream) {
+        this.onLocalStream(this.localStream);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error switching audio device:', error);
+      if (this.onError) {
+        this.onError('Failed to switch microphone');
+      }
+      return false;
+    }
+  }
+
+  // Public method to switch video device
+  public async switchVideoDevice(deviceId: string): Promise<boolean> {
+    try {
+      // Validate device exists in available devices
+      const targetDevice = this.availableVideoDevices.find((device) => device.deviceId === deviceId);
+      if (!targetDevice) {
+        console.error('Video device not found:', deviceId);
+        if (this.onError) {
+          this.onError('Selected camera not found');
+        }
+        return false;
+      }
+
+      this.selectedVideoDeviceId = deviceId;
+
+      if (!this.localStream) return false;
+
+      // Get new video stream with selected device
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { deviceId: { exact: deviceId } },
+      });
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      const oldVideoTrack = this.localStream.getVideoTracks()[0];
+
+      // Replace video track in peer connection
+      if (this.peer && oldVideoTrack) {
+        const sender = this.peer.getSenders().find((s) => s.track === oldVideoTrack);
+        if (sender) {
+          await sender.replaceTrack(newVideoTrack);
+        }
+      }
+
+      // Replace video track in local stream
+      if (oldVideoTrack) {
+        this.localStream.removeTrack(oldVideoTrack);
+        oldVideoTrack.stop();
+      }
+      this.localStream.addTrack(newVideoTrack);
+
+      // Update UI
+      if (this.onLocalStream) {
+        this.onLocalStream(this.localStream);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error switching video device:', error);
+      if (this.onError) {
+        this.onError('Failed to switch camera');
+      }
+      return false;
+    }
+  }
+
+  // Listen for device changes
+  private setupDeviceChangeListener() {
+    navigator.mediaDevices.addEventListener('devicechange', async () => {
+      const { audioDevices, videoDevices } = await this.getAvailableDevices();
+      if (this.onDeviceChange) {
+        this.onDeviceChange(audioDevices, videoDevices);
+      }
+    });
   }
 }
