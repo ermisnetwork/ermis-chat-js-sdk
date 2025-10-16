@@ -10,11 +10,11 @@ import {
   UserCallInfo,
 } from './types';
 
-const ICE_SERVERS = [
+const DEFAULT_ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:global.stun.twilio.com:3478' },
   {
-    urls: 'turn:36.50.62.242:3478',
+    urls: 'turn:36.50.63.8:3478',
     username: 'hoang',
     credential: 'pass1',
   },
@@ -24,6 +24,10 @@ const ICE_SERVERS = [
 interface RTCSignalData {
   type: string;
   sdp?: string;
+}
+
+interface DirectCallConfig {
+  iceServers?: RTCIceServer[];
 }
 
 export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> {
@@ -44,6 +48,9 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
   /** Current status of the call */
   callStatus? = '';
+
+  /** ICE servers configuration for WebRTC */
+  private iceServers: RTCIceServer[];
 
   /** WebRTC peer connection instance */
   peer?: RTCPeerConnection | null = null;
@@ -138,12 +145,14 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
    */
   private isDestroyed = false;
 
-  constructor(client: ErmisChat<ErmisChatGenerics>, sessionID: string) {
+  constructor(client: ErmisChat<ErmisChatGenerics>, sessionID: string, config?: DirectCallConfig) {
     this._client = client;
     this.cid = '';
     this.callType = '';
     this.sessionID = sessionID;
     this.userID = client.userID;
+
+    this.iceServers = config?.iceServers || DEFAULT_ICE_SERVERS;
 
     this.listenSocketEvents();
     this.setupDeviceChangeListener();
@@ -309,7 +318,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
     // Create new RTCPeerConnection with ICE servers
     this.peer = new RTCPeerConnection({
-      iceServers: ICE_SERVERS,
+      iceServers: this.iceServers,
     });
 
     // Add local stream to peer connection
