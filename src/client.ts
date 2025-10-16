@@ -578,6 +578,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     const setTokenPromise = this._setToken(user, userTokenOrProvider);
     this._setUser(user);
+          this.state.updateUser({ id: user.id, name: user?.name || user.id, avatar: user?.image || ''});
 
     const wsPromise = this.openConnection();
 
@@ -1410,8 +1411,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     // }
 
     if (event.type === 'health.check' && event.me) {
-      client.user = event.me;
-      client.state.updateUser(event.me);
+      // client.user = event.me;      
+      // client.state.updateUser(event.me);
       // client.mutedChannels = event.me.channel_mutes;
       // client.mutedUsers = event.me.mutes;
     }
