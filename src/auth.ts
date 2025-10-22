@@ -33,7 +33,7 @@ export class ErmisAuthProvider {
     this.browser = typeof inputOptions.browser !== 'undefined' ? inputOptions.browser : typeof window !== 'undefined';
     this.node = !this.browser;
     this.options = {
-      timeout: 3000,
+      // timeout: 3000,
       withCredentials: false, // making sure cookies are not sent
       warmUp: false,
       recoverStateOnReconnect: true,
@@ -214,8 +214,11 @@ export class ErmisAuthProvider {
         'x-client-request-id': randomId(),
       };
     }
-    const { params: axiosRequestConfigParams, headers: axiosRequestConfigHeaders, ...axiosRequestConfigRest } =
-      this.options?.axiosRequestConfig || {};
+    const {
+      params: axiosRequestConfigParams,
+      headers: axiosRequestConfigHeaders,
+      ...axiosRequestConfigRest
+    } = this.options?.axiosRequestConfig || {};
 
     let user_service_params = {
       // api_key: this.key,
