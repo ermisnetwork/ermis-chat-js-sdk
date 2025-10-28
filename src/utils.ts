@@ -522,3 +522,6 @@ export async function ensureMembersUserInfoLoaded<ErmisChatGenerics extends Exte
     await client.getBatchUsers(missingUserIds);
   }
 }
+
+export const getLatestCreatedAt = (messages: any[] = []) =>
+  messages.length > 0 ? Math.max(...messages.map((msg) => new Date(msg.created_at).getTime())) : 0;

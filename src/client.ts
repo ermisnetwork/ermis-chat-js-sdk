@@ -23,6 +23,7 @@ import {
   ensureMembersUserInfoLoaded,
   getDirectChannelImage,
   getDirectChannelName,
+  getLatestCreatedAt,
   isFunction,
   isOnline,
   isOwnUserBaseProperty,
@@ -1443,6 +1444,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
         delete this.activeChannels[event.cid];
       });
+
+      for (const channel of Object.values(this.activeChannels)) {
+        if (channel.type === 'team' && channel.state.topics?.some((t) => t.cid === event.cid)) {
+          // Remove the topic with matching cid from the topics array
+          channel.state.topics = channel.state.topics.filter((t) => t.cid !== event.cid);
+        }
+      }
     }
     if (event.type === 'notification.invite_rejected') {
       if (event.member?.user_id === this.userID && event.cid) {
@@ -1932,10 +1940,6 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
     // Sort channels by latest message created_at (including topics if present)
     data.channels.sort((a, b) => {
-      // Helper to get latest created_at from messages array
-      const getLatestCreatedAt = (messages: any[] = []) =>
-        messages.length > 0 ? Math.max(...messages.map((msg) => new Date(msg.created_at).getTime())) : 0;
-
       // Get latest message created_at in channel a
       let aLatest = getLatestCreatedAt(a.messages);
 
@@ -1976,6 +1980,14 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         c.channel.type === 'messaging' ? getDirectChannelName(c.channel.members, this.userID || '') : c.channel.name;
       c.channel.image =
         c.channel.type === 'messaging' ? getDirectChannelImage(c.channel.members, this.userID || '') : c.channel.image;
+
+      if (c.channel.type === 'team' && Array.isArray(c.topics)) {
+        c.topics.sort((a, b) => {
+          const aLatest = getLatestCreatedAt(a.messages);
+          const bLatest = getLatestCreatedAt(b.messages);
+          return bLatest - aLatest;
+        });
+      }
     });
 
     this.dispatchEvent({

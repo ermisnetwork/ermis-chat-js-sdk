@@ -4,7 +4,7 @@ export const EVENT_MAP = {
   'channel.hidden': true,
   'channel.kicked': true,
   'channel.muted': true,
-  'channel.truncated': true,
+  'channel.truncate': true,
   'channel.unmuted': true,
   'channel.updated': true,
   'channel.visible': true,
@@ -73,4 +73,5 @@ export const EVENT_MAP = {
   'channel.topic.created': true,
   'channel.topic.closed': true,
   'channel.topic.reopen': true,
+  'channel.topic.updated': true,
 };

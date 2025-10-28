@@ -286,7 +286,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {Promise<EventAPIResponse<ErmisChatGenerics>>} The Server Response
    */
   async sendEvent(event: Event<ErmisChatGenerics>) {
-    this._checkInitialized();
+    // this._checkInitialized();
     return await this.getClient().post<EventAPIResponse<ErmisChatGenerics>>(this._channelURL() + '/event', {
       event,
     });
@@ -400,7 +400,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {Promise<ReactionAPIResponse<ErmisChatGenerics>>} The Server Response
    */
   deleteReaction(messageID: string, reactionType: string) {
-    this._checkInitialized();
+    // this._checkInitialized();
     if (!reactionType || !messageID) {
       throw Error('Deleting a reaction requires specifying both the message and reaction type');
     }
@@ -808,12 +808,12 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     expiresAt: Date | null;
     muted: boolean;
   } {
-    this._checkInitialized();
+    // this._checkInitialized();
     return this.getClient()._muteStatus(this.cid);
   }
 
   sendAction(messageID: string, formData: Record<string, string>) {
-    this._checkInitialized();
+    // this._checkInitialized();
     if (!messageID) {
       throw Error(`Message id is missing`);
     }
@@ -904,7 +904,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {Promise<EventAPIResponse<ErmisChatGenerics> | null>} Description
    */
   async markRead(data: MarkReadOptions<ErmisChatGenerics> = {}) {
-    this._checkInitialized();
+    // this._checkInitialized();
 
     // if (!this.getConfig()?.read_events && !this.getClient()._isUsingServerAuth()) {
     //   return Promise.resolve(null);
@@ -922,7 +922,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @return {APIResponse} An API response
    */
   async markUnread(data: MarkUnreadOptions<ErmisChatGenerics>) {
-    this._checkInitialized();
+    // this._checkInitialized();
 
     if (!this.getConfig()?.read_events && !this.getClient()._isUsingServerAuth()) {
       return Promise.resolve(null);
@@ -1465,7 +1465,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @returns {Promise<APIResponse>}
    */
   async banUser(targetUserID: string, options: BanUserOptions<ErmisChatGenerics>) {
-    this._checkInitialized();
+    // this._checkInitialized();
     return await this.getClient().banUser(targetUserID, {
       ...options,
       type: this.type,
@@ -1482,7 +1482,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @returns {Promise<APIResponse>}
    */
   async hide(userId: string | null = null, clearHistory = false) {
-    this._checkInitialized();
+    // this._checkInitialized();
 
     return await this.getClient().post<APIResponse>(`${this._channelURL()}/hide`, {
       user_id: userId,
@@ -1497,7 +1497,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @returns {Promise<APIResponse>}
    */
   async show(userId: string | null = null) {
-    this._checkInitialized();
+    // this._checkInitialized();
     return await this.getClient().post<APIResponse>(`${this._channelURL()}/show`, {
       user_id: userId,
     });
@@ -1510,7 +1510,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @returns {Promise<APIResponse>}
    */
   async unbanUser(targetUserID: string) {
-    this._checkInitialized();
+    // this._checkInitialized();
     return await this.getClient().unbanUser(targetUserID, {
       type: this.type,
       id: this.id,
@@ -1525,7 +1525,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @returns {Promise<APIResponse>}
    */
   async shadowBan(targetUserID: string, options: BanUserOptions<ErmisChatGenerics>) {
-    this._checkInitialized();
+    // this._checkInitialized();
     return await this.getClient().shadowBan(targetUserID, {
       ...options,
       type: this.type,
@@ -1540,7 +1540,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    * @returns {Promise<APIResponse>}
    */
   async removeShadowBan(targetUserID: string) {
-    this._checkInitialized();
+    // this._checkInitialized();
     return await this.getClient().removeShadowBan(targetUserID, {
       type: this.type,
       id: this.id,
@@ -1969,9 +1969,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           channelState.removePinnedMessage(event.message);
         }
         break;
-      case 'channel.truncated':
-        if (event.channel?.truncated_at) {
-          const truncatedAt = +new Date(event.channel.truncated_at);
+      case 'channel.truncate':
+        if (event.channel?.created_at) {
+          const truncatedAt = +new Date(event.channel.created_at);
 
           channelState.messageSets.forEach((messageSet, messageSetIndex) => {
             messageSet.messages.forEach(({ created_at: createdAt, id }) => {
@@ -2217,6 +2217,15 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           channelState.members[event.member.user_id] = event.member;
         }
         break;
+      case 'member.blocked':
+      case 'member.unblocked':
+        if (event.member?.user_id) {
+          const user = getUserInfo(event.member.user_id, users);
+          event.member.user = user;
+          channelState.membership = event.member;
+          this.state.membership = event.member;
+        }
+        break;
       case 'channel.pinned':
         if (channel.data) {
           channel.data.is_pinned = true;
@@ -2264,6 +2273,15 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         if (channel.data) {
           channel.data.is_closed_topic = false;
         }
+        event.user = getUserInfo(event.user?.id || '', users);
+        break;
+      case 'channel.topic.updated':
+        if (channel.data) {
+          channel.data.name = event.channel?.name;
+          channel.data.image = event.channel?.image;
+          channel.data.description = event.channel?.description;
+        }
+
         event.user = getUserInfo(event.user?.id || '', users);
         break;
       default:
