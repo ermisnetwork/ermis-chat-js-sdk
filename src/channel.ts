@@ -991,8 +991,18 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     state.read = enrichWithUserInfo(state.read || [], users);
 
     // Process topics for team channels (already handled in query, but ensuring consistency)
-    if (this.type === 'team' && state.channel.topics_enabled && state.topics) {
-      this._processTopics(state.topics, users);
+    if (this.type === 'team' && state.channel.topics_enabled) {
+      const payload = {
+        filter_conditions: { type: ['topic'], parent_cid: this.cid, project_id: this.getClient().projectId },
+        sort: [],
+        message_limit: 25,
+      };
+      const topicsFromApi: any = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(
+        this.getClient().baseURL + '/channels',
+        payload,
+      );
+
+      this._processTopics(topicsFromApi.channels || [], users);
     }
 
     this.data = state.channel;
