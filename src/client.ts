@@ -1988,6 +1988,10 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
           return bLatest - aLatest;
         });
       }
+
+      if (c.pinned_messages) {
+        c.pinned_messages = enrichWithUserInfo(c.pinned_messages || [], membersInfo);
+      }
     });
 
     this.dispatchEvent({
