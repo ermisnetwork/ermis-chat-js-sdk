@@ -49,8 +49,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   /** Current status of the call */
   callStatus? = '';
 
-  /** Address or endpoint for the call */
-  address?: string | undefined;
+  metadata?: any;
 
   /** ICE servers configuration for WebRTC */
   private iceServers: RTCIceServer[];
@@ -156,7 +155,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     this.callType = '';
     this.sessionID = sessionID;
     this.userID = client.userID;
-    this.address = '';
+    this.metadata = {};
 
     this.iceServers = config?.iceServers || DEFAULT_ICE_SERVERS;
 
@@ -569,7 +568,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
   private listenSocketEvents() {
     this.signalHandler = async (event: Event<ErmisChatGenerics>) => {
-      const { action, user_id: eventUserId, session_id: eventSessionId, cid, is_video, signal, address } = event;
+      const { action, user_id: eventUserId, session_id: eventSessionId, cid, is_video, signal, metadata } = event;
 
       switch (action) {
         case CallAction.CREATE_CALL:
@@ -589,7 +588,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           this.setCallStatus(CallStatus.RINGING);
           this.callType = is_video ? 'video' : 'audio';
           this.cid = cid || '';
-          this.address = String(address) || '';
+          this.metadata = metadata || {};
 
           if (typeof this.onCallEvent === 'function') {
             this.onCallEvent({
@@ -598,7 +597,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
               cid: cid || '',
               callerInfo: this.callerInfo,
               receiverInfo: this.receiverInfo,
-              address: String(address) || '',
+              metadata: this.metadata,
             });
           }
           // Set missCall timeout if no connection after 60s
@@ -679,14 +678,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
         this.setConnectionMessage(null);
 
         // When back online, if CONNECTED, set up health_call intervals again
-        if (this.callStatus === CallStatus.CONNECTED && this.peer) {
-          if (!this.healthCallInterval) {
-            this.healthCallInterval = setInterval(() => {
-              if (this.dataChannel?.readyState === 'open') {
-                this.dataChannel.send(JSON.stringify({ type: 'health_call' }));
-              }
-            }, 1000);
-          }
+        if (this.callStatus === CallStatus.CONNECTED) {
           if (!this.healthCallServerInterval) {
             this.healthCallServerInterval = setInterval(() => {
               this.healthCall();
@@ -713,19 +705,19 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           this.callType = 'video'; // Upgrade call type to video
         }
 
-        if (upgradeUserId === this.userID) {
-          const jsonData = {
-            type: 'transciver_state',
-            body: {
-              audio_enable: this.localStream?.getAudioTracks().some((track) => track.enabled),
-              video_enable: true,
-            },
-          };
+        // if (upgradeUserId === this.userID) {
+        //   const jsonData = {
+        //     type: 'transciver_state',
+        //     body: {
+        //       audio_enable: this.localStream?.getAudioTracks().some((track) => track.enabled),
+        //       video_enable: true,
+        //     },
+        //   };
 
-          if (this.dataChannel?.readyState === 'open') {
-            this.dataChannel.send(JSON.stringify(jsonData));
-          }
-        }
+        //   if (this.dataChannel?.readyState === 'open') {
+        //     this.dataChannel.send(JSON.stringify(jsonData));
+        //   }
+        // }
       }
     };
 
@@ -782,6 +774,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     this.setConnectionMessage(null);
     this.cid = '';
     this.callType = '';
+    this.metadata = {};
   }
 
   private destroy() {
@@ -823,14 +816,14 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     };
   }
 
-  public async createCall(callType: string, cid: string, address: string) {
+  public async createCall(callType: string, cid: string, metadata: any) {
     this.cid = cid;
 
     return await this._sendSignal({
       action: CallAction.CREATE_CALL,
       cid,
       is_video: callType === 'video',
-      address,
+      metadata,
     });
   }
 

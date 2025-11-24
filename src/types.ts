@@ -3200,7 +3200,7 @@ export type SignalData = {
   is_video?: boolean;
   action?: string;
   signal?: Object;
-  address?: string;
+  metadata?: Object;
 };
 
 export enum CallAction {
@@ -3230,7 +3230,7 @@ export type CallEventData = {
   cid: string;
   callerInfo: UserCallInfo | undefined;
   receiverInfo: UserCallInfo | undefined;
-  address?: string;
+  metadata?: Object;
 };
 
 export type UserCallInfo = {
