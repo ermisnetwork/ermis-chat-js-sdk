@@ -212,7 +212,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     }
   }
 
-  private async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
+  public async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
     // Get available devices first
     const { audioDevices, videoDevices } = await this.getAvailableDevices();
 
@@ -235,6 +235,9 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     const audioConstraints = constraints.audio
       ? {
           deviceId: this.selectedAudioDeviceId ? { exact: this.selectedAudioDeviceId } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 48000,
         }
       : false;
 
@@ -582,7 +585,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           }
           this.isDestroyed = false;
           this.callStatus = '';
-          // await this.startLocalStream({ audio: true, video: true });
+          await this.startLocalStream();
           if (this.callStatus === CallStatus.ENDED) return;
           this.setUserInfo(cid, eventUserId);
           this.setCallStatus(CallStatus.RINGING);
