@@ -1,4 +1,5 @@
 import { ErmisChat } from './client';
+import init, { ErmisCall } from './wasm/ermis_call_node_wasm';
 import {
   CallAction,
   CallEventData,
@@ -6,31 +7,16 @@ import {
   DefaultGenerics,
   Event,
   ExtendableGenerics,
+  Metadata,
   SignalData,
   UserCallInfo,
 } from './types';
+import { MediaStreamSender } from './media_stream_sender';
+import { MediaStreamReceiver } from './media_stream_receiver';
 
-const DEFAULT_ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:global.stun.twilio.com:3478' },
-  {
-    urls: 'turn:36.50.63.8:3478',
-    username: 'hoang',
-    credential: 'pass1',
-  },
-];
+export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> {
+  wasmPath: string;
 
-// Interface for WebRTC signal data
-interface RTCSignalData {
-  type: string;
-  sdp?: string;
-}
-
-interface DirectCallConfig {
-  iceServers?: RTCIceServer[];
-}
-
-export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> {
   /** Reference to the Ermis Chat client instance */
   _client: ErmisChat<ErmisChatGenerics>;
 
@@ -49,16 +35,9 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   /** Current status of the call */
   callStatus? = '';
 
-  metadata?: any;
+  metadata?: Metadata;
 
-  /** ICE servers configuration for WebRTC */
-  private iceServers: RTCIceServer[];
-
-  /** WebRTC peer connection instance */
-  peer?: RTCPeerConnection | null = null;
-
-  /** WebRTC data channel instance */
-  dataChannel?: RTCDataChannel | null = null;
+  callNode: ErmisCall | null = null;
 
   /** Local media stream from user's camera/microphone */
   localStream?: MediaStream | null = null;
@@ -149,18 +128,96 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
    */
   private isDestroyed = false;
 
-  constructor(client: ErmisChat<ErmisChatGenerics>, sessionID: string, config?: DirectCallConfig) {
+  public mediaSender: MediaStreamSender | null = null;
+  public mediaReceiver: MediaStreamReceiver | null = null;
+
+  constructor(client: ErmisChat<ErmisChatGenerics>, sessionID: string, wasmPath: string) {
     this._client = client;
     this.cid = '';
     this.callType = '';
     this.sessionID = sessionID;
     this.userID = client.userID;
     this.metadata = {};
-
-    this.iceServers = config?.iceServers || DEFAULT_ICE_SERVERS;
+    this.wasmPath = wasmPath;
 
     this.listenSocketEvents();
     this.setupDeviceChangeListener();
+    this.loadWasm();
+  }
+
+  private async loadWasm(): Promise<void> {
+    try {
+      await init(this.wasmPath);
+    } catch (error) {
+      console.error('Failed to load ErmisCall WASM module:', error);
+      throw error;
+    }
+  }
+
+  private async initialize(): Promise<ErmisCall> {
+    try {
+      const node = new ErmisCall();
+      await node.spawn(['https://test-iroh.ermis.network.:8443']);
+      this.callNode = node;
+
+      // 1. Init Sender
+      this.mediaSender = new MediaStreamSender(node as any);
+
+      // 2. Init Receiver với Callback
+      this.mediaReceiver = new MediaStreamReceiver(node as any, {
+        // Xử lý khi nhận được frame CONNECTED
+        onConnected: () => {
+          this.setCallStatus(CallStatus.CONNECTED);
+          this.connectCall();
+          if (this.missCallTimeout) {
+            clearTimeout(this.missCallTimeout);
+            this.missCallTimeout = null;
+          }
+          if (this.healthCallServerInterval) clearInterval(this.healthCallServerInterval);
+          this.healthCallServerInterval = setInterval(() => {
+            this.healthCall();
+          }, 10000);
+
+          const remoteStream = this.mediaReceiver?.getRemoteStream();
+
+          if (remoteStream && this.onRemoteStream) {
+            this.onRemoteStream(remoteStream);
+          }
+        },
+
+        // Xử lý khi nhận được frame TRANSCEIVER_STATE
+        onTransceiverState: (state) => {
+          if (typeof this.onDataChannelMessage === 'function') {
+            this.onDataChannelMessage(state);
+          }
+        },
+      });
+
+      return node;
+    } catch (error) {
+      console.error('Failed to initialize Ermis SDK:', error);
+      throw error;
+    }
+  }
+
+  public async getLocalEndpointAddr(): Promise<string | null> {
+    try {
+      await this.initialize();
+
+      if (!this.callNode) {
+        console.error('ErmisCall is not initialized.');
+        return null;
+      }
+
+      const address = await this.callNode.getLocalEndpointAddr();
+      if (this.metadata) {
+        this.metadata.address = address;
+      }
+      return address;
+    } catch (error) {
+      console.error('Failed to get address from ErmisCall:', error);
+      return null;
+    }
   }
 
   private getClient(): ErmisChat<ErmisChatGenerics> {
@@ -212,7 +269,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     }
   }
 
-  public async startLocalStream(constraints: MediaStreamConstraints = { audio: true, video: true }) {
+  private async getMediaConstraints() {
     // Get available devices first
     const { audioDevices, videoDevices } = await this.getAvailableDevices();
 
@@ -220,8 +277,6 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     if (this.onDeviceChange) {
       this.onDeviceChange(audioDevices, videoDevices);
     }
-
-    const hasCamera = videoDevices.length > 0;
 
     // Auto-select default devices if none selected
     if (!this.selectedAudioDeviceId && audioDevices.length > 0) {
@@ -232,19 +287,19 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     }
 
     // Build constraints with specific device IDs if selected
-    const audioConstraints = constraints.audio
-      ? {
-          deviceId: this.selectedAudioDeviceId ? { exact: this.selectedAudioDeviceId } : undefined,
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 48000,
-        }
-      : false;
+    const audioConstraints = {
+      deviceId: this.selectedAudioDeviceId ? { exact: this.selectedAudioDeviceId } : undefined,
+      echoCancellation: true,
+      noiseSuppression: true,
+      sampleRate: 48000,
+    };
 
     const videoConstraints =
-      hasCamera && constraints.video
+      this.callType === 'video'
         ? {
             deviceId: this.selectedVideoDeviceId ? { exact: this.selectedVideoDeviceId } : undefined,
+            width: 640,
+            height: 360,
           }
         : false;
 
@@ -253,9 +308,15 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       video: videoConstraints,
     };
 
+    return finalConstraints;
+  }
+
+  public async startLocalStream() {
+    const mediaConstraints = await this.getMediaConstraints();
+
     try {
       // Request the media stream with the determined constraints
-      const stream = await navigator.mediaDevices.getUserMedia(finalConstraints);
+      const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
       if (this.callStatus === CallStatus.ENDED) {
         // If the call has ended, stop the local stream tracks
         stream.getTracks().forEach((track) => track.stop());
@@ -317,258 +378,6 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     };
   }
 
-  private createPeer(initiator: boolean) {
-    if (this.peer) {
-      this.peer.close();
-      this.peer = null;
-      this.dataChannel = null;
-    }
-
-    // Create new RTCPeerConnection with ICE servers
-    this.peer = new RTCPeerConnection({
-      iceServers: this.iceServers,
-    });
-
-    // Add local stream to peer connection
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        if (this.localStream && this.peer) {
-          this.peer.addTrack(track, this.localStream);
-        }
-      });
-    }
-
-    // Handle ICE candidates
-    this.peer.onicecandidate = async (event) => {
-      if (event.candidate) {
-        const sdpMid = event.candidate.sdpMid || '';
-        const sdpMLineIndex = event.candidate.sdpMLineIndex || 0;
-        const candidate = event.candidate.candidate;
-        const sdp = `${sdpMid}$${sdpMLineIndex}$${candidate}`;
-
-        // Send ICE candidate to server
-        await this.signalCall({
-          type: 'ice',
-          sdp,
-        });
-      }
-    };
-
-    // Handle receiving remote stream
-    this.peer.ontrack = (event) => {
-      this.remoteStream = event.streams[0];
-      if (this.onRemoteStream) {
-        this.onRemoteStream(event.streams[0]);
-      }
-    };
-
-    // Handle ICE connection state changes
-    this.peer.oniceconnectionstatechange = () => {
-      if (this.peer?.iceConnectionState === 'connected' || this.peer?.iceConnectionState === 'completed') {
-        this.setCallStatus(CallStatus.CONNECTED);
-
-        // Clear missCall timeout when connected
-        if (this.missCallTimeout) {
-          clearTimeout(this.missCallTimeout);
-          this.missCallTimeout = null;
-        }
-
-        // Perform connectCall
-        this.connectCall();
-
-        // Set up health_call interval via WebRTC
-        if (this.healthCallInterval) clearInterval(this.healthCallInterval);
-        this.healthCallInterval = setInterval(() => {
-          if (this.dataChannel?.readyState === 'open') {
-            this.dataChannel.send(JSON.stringify({ type: 'health_call' }));
-          }
-        }, 1000);
-
-        // Set up healthCall interval via server
-        if (this.healthCallServerInterval) clearInterval(this.healthCallServerInterval);
-        this.healthCallServerInterval = setInterval(() => {
-          this.healthCall();
-        }, 10000);
-      } else if (
-        this.peer?.iceConnectionState === 'failed' ||
-        this.peer?.iceConnectionState === 'disconnected' ||
-        this.peer?.iceConnectionState === 'closed'
-      ) {
-        this.setCallStatus(CallStatus.ERROR);
-        this.cleanupCall();
-      }
-    };
-
-    // Create data channel if initiator
-    if (initiator) {
-      this.dataChannel = this.peer.createDataChannel('rtc_data_channel');
-      this.setupDataChannel();
-    } else {
-      // Register event to receive data channel from initiator
-      this.peer.ondatachannel = (event) => {
-        this.dataChannel = event.channel;
-        this.setupDataChannel();
-      };
-    }
-
-    // If initiator, create offer
-    if (initiator) {
-      this.createOffer();
-    }
-  }
-
-  // Set up and handle data channel
-  private setupDataChannel() {
-    if (!this.dataChannel) return;
-
-    this.dataChannel.onopen = () => {
-      // Send initial state when connection is established
-      if (this.dataChannel?.readyState === 'open') {
-        const jsonData = {
-          type: 'transciver_state',
-          body: {
-            audio_enable: true,
-            video_enable: this.callType === 'video',
-          },
-        };
-
-        this.dataChannel.send(JSON.stringify(jsonData));
-      }
-    };
-
-    this.dataChannel.onmessage = (event) => {
-      let jsonString: string;
-
-      if (typeof event.data === 'string') {
-        jsonString = event.data;
-      } else if (event.data instanceof ArrayBuffer) {
-        jsonString = new TextDecoder().decode(event.data);
-      } else {
-        console.warn('Unknown data type received on data channel:', event.data);
-        return;
-      }
-
-      const message = JSON.parse(jsonString);
-
-      if (typeof this.onDataChannelMessage === 'function') {
-        this.onDataChannelMessage(message);
-      }
-
-      // Handle health_call
-      if (message.type === 'health_call') {
-        // Reset timeout every time health_call is received
-        if (this.healthCallTimeout) clearTimeout(this.healthCallTimeout);
-        this.healthCallTimeout = setTimeout(async () => {
-          // If no health_call received after 30s, end the call
-          await this.endCall();
-        }, 30000);
-
-        // Reset connection lost warning
-        if (this.healthCallWarningTimeout) clearTimeout(this.healthCallWarningTimeout);
-        this.setConnectionMessage(null);
-
-        // If no health_call received after 3s, show warning
-        this.healthCallWarningTimeout = setTimeout(() => {
-          if (!this.isOffline) {
-            this.setConnectionMessage(
-              `${
-                this.userID === this.callerInfo?.id ? this.receiverInfo?.name : this.callerInfo?.name
-              } network connection is unstable`,
-            );
-          }
-        }, 3000);
-      }
-    };
-
-    this.dataChannel.onerror = (error) => {
-      console.error('Data channel error:', error);
-    };
-
-    this.dataChannel.onclose = () => {
-      this.dataChannel = null;
-    };
-  }
-
-  // Method to create offer
-  private async createOffer() {
-    if (!this.peer) return;
-
-    try {
-      const offer = await this.peer.createOffer();
-      await this.peer.setLocalDescription(offer);
-      await this.signalCall(offer);
-    } catch (error) {
-      console.error('Error creating offer:', error);
-      if (typeof this.onError === 'function') {
-        this.onError('Error creating offer');
-      }
-    }
-  }
-
-  private async makeOffer() {
-    this.createPeer(true); // initiator = true
-  }
-
-  private async handleOffer(offer: RTCSignalData) {
-    this.createPeer(false); // initiator = false
-
-    if (this.peer && offer.sdp) {
-      try {
-        await this.peer.setRemoteDescription(
-          new RTCSessionDescription({
-            type: 'offer',
-            sdp: offer.sdp,
-          }),
-        );
-
-        // Create answer
-        const answer = await this.peer.createAnswer();
-        await this.peer.setLocalDescription(answer);
-        await this.signalCall(answer);
-      } catch (error) {
-        console.error('Error handling offer:', error);
-        if (typeof this.onError === 'function') {
-          this.onError('Error handling offer');
-        }
-      }
-    }
-  }
-
-  private async handleAnswer(answer: RTCSignalData) {
-    if (this.peer && answer.sdp) {
-      try {
-        await this.peer.setRemoteDescription(
-          new RTCSessionDescription({
-            type: 'answer',
-            sdp: answer.sdp,
-          }),
-        );
-      } catch (error) {
-        console.error('Error handling answer:', error);
-        if (typeof this.onError === 'function') {
-          this.onError('Error handling answer');
-        }
-      }
-    }
-  }
-
-  private async handleIceCandidate(candidate: RTCSignalData) {
-    if (this.peer && candidate.sdp) {
-      try {
-        const splitSdp = candidate.sdp.split('$');
-        const iceCandidate = new RTCIceCandidate({
-          candidate: splitSdp[2],
-          sdpMLineIndex: Number(splitSdp[1]),
-          sdpMid: splitSdp[0],
-        });
-
-        await this.peer.addIceCandidate(iceCandidate);
-      } catch (error) {
-        console.error('Error adding ICE candidate:', error);
-      }
-    }
-  }
-
   private listenSocketEvents() {
     this.signalHandler = async (event: Event<ErmisChatGenerics>) => {
       const { action, user_id: eventUserId, session_id: eventSessionId, cid, is_video, signal, metadata } = event;
@@ -585,13 +394,23 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           }
           this.isDestroyed = false;
           this.callStatus = '';
+          this.callType = is_video ? 'video' : 'audio';
           await this.startLocalStream();
           if (this.callStatus === CallStatus.ENDED) return;
           this.setUserInfo(cid, eventUserId);
           this.setCallStatus(CallStatus.RINGING);
-          this.callType = is_video ? 'video' : 'audio';
           this.cid = cid || '';
           this.metadata = metadata || {};
+
+          console.log('----metadata---', metadata);
+          if (eventUserId !== this.userID) {
+            await this.initialize();
+          }
+
+          if (this.localStream && this.mediaSender && this.mediaReceiver) {
+            this.mediaSender?.initEncoders(this.localStream);
+            this.mediaReceiver?.initDecoders(this.callType);
+          }
 
           if (typeof this.onCallEvent === 'function') {
             this.onCallEvent({
@@ -611,52 +430,41 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
           break;
 
         case CallAction.ACCEPT_CALL:
-          if (typeof this.onAcceptCallEvent === 'function') {
-            this.onAcceptCallEvent(event);
-            this.setCallStatus(CallStatus.CONNECTED);
-
-            if (this.missCallTimeout) {
-              clearTimeout(this.missCallTimeout);
-              this.missCallTimeout = null;
-            }
-          }
-
-          if (eventUserId !== this.userID && !this.isDestroyed) {
-            // Caller: when receiver accepts, create offer and send to receiver
-            // await this.makeOffer();
+          if (eventUserId === this.userID && eventSessionId !== this.sessionID) {
+            this.isDestroyed = true;
+            this.destroy();
             return;
           }
 
-          if (eventSessionId !== this.sessionID) {
-            // If the event is triggered by the current user but the session ID is different,
-            // This means another device (or tab) of the same user has answered the call.
-            // In this case, end and destroy the current call instance, and mark it as destroyed
-            // so it will ignore further call events.
-            this.setCallStatus(CallStatus.ENDED);
-            this.destroy();
-            this.isDestroyed = true;
-          }
-          break;
-
-        case CallAction.SIGNAL_CALL:
-          if (eventUserId === this.userID || this.isDestroyed) return;
-
-          if (typeof signal === 'object' && signal !== null && 'type' in signal) {
-            const signalObj = signal as RTCSignalData;
-            if (signalObj.type === 'offer') {
-              await this.handleOffer(signalObj);
-            } else if (signalObj.type === 'answer') {
-              await this.handleAnswer(signalObj);
-            } else if (signalObj.type === 'ice') {
-              await this.handleIceCandidate(signalObj);
+          if (eventUserId !== this.userID && !this.isDestroyed) {
+            if (this.mediaReceiver && this.mediaSender) {
+              await this.mediaReceiver.acceptConnection();
+              await this.mediaSender.sendConnected();
+              await this.mediaSender.sendConfigs();
             }
           }
+
+          // this.setCallStatus(CallStatus.CONNECTED);
+          // this.connectCall();
+          // if (this.missCallTimeout) {
+          //   clearTimeout(this.missCallTimeout);
+          //   this.missCallTimeout = null;
+          // }
+          // if (this.healthCallServerInterval) clearInterval(this.healthCallServerInterval);
+          // this.healthCallServerInterval = setInterval(() => {
+          //   this.healthCall();
+          // }, 10000);
+
+          // const remoteStream = this.mediaReceiver?.getRemoteStream();
+
+          // if (remoteStream && this.onRemoteStream) {
+          //   this.onRemoteStream(remoteStream);
+          // }
           break;
 
         case CallAction.END_CALL:
         case CallAction.REJECT_CALL:
         case CallAction.MISS_CALL:
-          this.setCallStatus(CallStatus.ENDED);
           this.destroy();
           break;
       }
@@ -705,22 +513,7 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
         if (upgraderInfo && typeof this.onUpgradeCall === 'function') {
           this.onUpgradeCall(upgraderInfo);
-          this.callType = 'video'; // Upgrade call type to video
         }
-
-        // if (upgradeUserId === this.userID) {
-        //   const jsonData = {
-        //     type: 'transciver_state',
-        //     body: {
-        //       audio_enable: this.localStream?.getAudioTracks().some((track) => track.enabled),
-        //       video_enable: true,
-        //     },
-        //   };
-
-        //   if (this.dataChannel?.readyState === 'open') {
-        //     this.dataChannel.send(JSON.stringify(jsonData));
-        //   }
-        // }
       }
     };
 
@@ -730,18 +523,6 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   private cleanupCall() {
-    // Close peer connection
-    if (this.peer) {
-      this.peer.close();
-      this.peer = null;
-    }
-
-    // Close data channel
-    if (this.dataChannel) {
-      this.dataChannel.close();
-      this.dataChannel = null;
-    }
-
     // Stop local stream if exists
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
@@ -774,10 +555,25 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       this.healthCallWarningTimeout = null;
     }
 
+    this.setCallStatus(CallStatus.ENDED);
     this.setConnectionMessage(null);
     this.cid = '';
     this.callType = '';
     this.metadata = {};
+    if (this.mediaSender) {
+      this.mediaSender?.stop();
+      this.mediaSender = null;
+    }
+    if (this.mediaReceiver) {
+      this.mediaReceiver.stop();
+      this.mediaReceiver = null;
+    }
+
+    if (this.callNode) {
+      this.callNode?.closeConnection();
+      this.callNode?.closeEndpoint();
+      this.callNode = null;
+    }
   }
 
   private destroy() {
@@ -819,23 +615,36 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     };
   }
 
-  public async createCall(callType: string, cid: string, metadata: any) {
-    this.cid = cid;
+  public async createCall(callType: string, cid: string) {
+    try {
+      this.cid = cid;
 
-    return await this._sendSignal({
-      action: CallAction.CREATE_CALL,
-      cid,
-      is_video: callType === 'video',
-      metadata,
-    });
+      const address = await this.getLocalEndpointAddr();
+
+      await this._sendSignal({
+        action: CallAction.CREATE_CALL,
+        cid,
+        is_video: callType === 'video',
+        metadata: { address },
+      });
+    } catch (error) {
+      console.error('Failed to create call:', error);
+      throw error;
+    }
   }
 
   public async acceptCall() {
-    return await this._sendSignal({ action: CallAction.ACCEPT_CALL });
-  }
+    try {
+      await this._sendSignal({ action: CallAction.ACCEPT_CALL });
 
-  private async signalCall(signal: any) {
-    return await this._sendSignal({ action: CallAction.SIGNAL_CALL, signal });
+      if (this.mediaSender) {
+        const address = this.metadata?.address || '';
+        await this.mediaSender.connect(address);
+      }
+    } catch (error) {
+      console.error('Failed to accept call:', error);
+      throw error;
+    }
   }
 
   public async endCall() {
@@ -859,10 +668,35 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   public async upgradeCall() {
-    if (this.callType === 'audio') {
-      return await this._sendSignal({ action: CallAction.UPGRADE_CALL });
+    try {
+      this.callType = 'video';
+      await this.startLocalStream();
+      await this._sendSignal({ action: CallAction.UPGRADE_CALL });
+
+      if (this.localStream) {
+        this.mediaSender?.initVideoEncoder(this.localStream?.getVideoTracks()[0]);
+        const audioEnable = !!this.localStream?.getAudioTracks().some((track) => track.enabled);
+        const videoEnable = !!this.localStream?.getVideoTracks().some((track) => track.enabled);
+        await this.mediaSender?.sendTransceiverState(audioEnable, videoEnable);
+      }
+    } catch (error) {
+      console.error('Failed to upgrade call:', error);
+      throw error;
     }
-    return null;
+  }
+
+  public async requestUpgradeCall(enabled: boolean) {
+    if (enabled) {
+      this.callType = 'video';
+      await this.startLocalStream();
+
+      if (this.localStream) {
+        this.mediaSender?.initVideoEncoder(this.localStream?.getVideoTracks()[0]);
+        const audioEnable = !!this.localStream?.getAudioTracks().some((track) => track.enabled);
+        const videoEnable = !!this.localStream?.getVideoTracks().some((track) => track.enabled);
+        await this.mediaSender?.sendTransceiverState(audioEnable, videoEnable);
+      }
+    }
   }
 
   public async startScreenShare() {
@@ -887,15 +721,6 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       this.localStream = screenStream;
     }
 
-    // Replace video track in peer connection
-    if (this.peer) {
-      const senders = this.peer.getSenders();
-      const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-      if (videoSender) {
-        await videoSender.replaceTrack(screenTrack);
-      }
-    }
-
     // When screen sharing stops, automatically switch back to camera
     screenTrack.onended = () => {
       this.stopScreenShare();
@@ -905,6 +730,8 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     if (this.onLocalStream) {
       // @ts-ignore
       this.onLocalStream(this.localStream);
+
+      this.mediaSender?.replaceVideoTrack(this.localStream.getVideoTracks()[0]);
     }
 
     // Call callback when screen sharing starts
@@ -914,8 +741,9 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
   }
 
   public async stopScreenShare() {
-    // Get camera stream again
-    const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    const mediaConstraints = await this.getMediaConstraints();
+
+    const cameraStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
     const cameraTrack = cameraStream.getVideoTracks()[0];
 
     // Replace video track in localStream
@@ -929,18 +757,10 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       this.localStream = cameraStream;
     }
 
-    // Replace video track in peer connection
-    if (this.peer) {
-      const senders = this.peer.getSenders();
-      const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-      if (videoSender) {
-        await videoSender.replaceTrack(cameraTrack);
-      }
-    }
-
     // Call callback if UI needs to update
     if (this.onLocalStream) {
       this.onLocalStream(this.localStream);
+      this.mediaSender?.replaceVideoTrack(this.localStream.getVideoTracks()[0]);
     }
 
     // Call callback when screen sharing stops
@@ -949,44 +769,27 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
     }
   }
 
-  public toggleMic(enabled: boolean) {
+  public async toggleMic(enabled: boolean) {
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach((track) => {
         track.enabled = enabled;
       });
 
-      if (this.dataChannel && this.dataChannel.readyState === 'open') {
-        this.dataChannel.send(
-          JSON.stringify({
-            type: 'transciver_state',
-            body: {
-              audio_enable: enabled,
-              video_enable: this.callType === 'video',
-              // video_enable: this.localStream.getVideoTracks().some((track) => track.enabled),
-            },
-          }),
-        );
-      }
+      const audioEnable = enabled;
+      const videoEnable = this.localStream.getVideoTracks().some((track) => track.enabled);
+      await this.mediaSender?.sendTransceiverState(audioEnable, videoEnable);
     }
   }
 
-  public toggleCamera(enabled: boolean) {
+  public async toggleCamera(enabled: boolean) {
     if (this.localStream) {
       this.localStream.getVideoTracks().forEach((track) => {
         track.enabled = enabled;
       });
 
-      if (this.dataChannel && this.dataChannel.readyState === 'open') {
-        this.dataChannel.send(
-          JSON.stringify({
-            type: 'transciver_state',
-            body: {
-              audio_enable: this.localStream.getAudioTracks().some((track) => track.enabled),
-              video_enable: enabled,
-            },
-          }),
-        );
-      }
+      const audioEnable = this.localStream.getAudioTracks().some((track) => track.enabled);
+      const videoEnable = enabled;
+      await this.mediaSender?.sendTransceiverState(audioEnable, videoEnable);
     }
   }
 
@@ -1017,12 +820,12 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
       const oldAudioTrack = this.localStream.getAudioTracks()[0];
 
       // Replace audio track in peer connection
-      if (this.peer && oldAudioTrack) {
-        const sender = this.peer.getSenders().find((s) => s.track === oldAudioTrack);
-        if (sender) {
-          await sender.replaceTrack(newAudioTrack);
-        }
-      }
+      // if (this.peer && oldAudioTrack) {
+      //   const sender = this.peer.getSenders().find((s) => s.track === oldAudioTrack);
+      //   if (sender) {
+      //     await sender.replaceTrack(newAudioTrack);
+      //   }
+      // }
 
       // Replace audio track in local stream
       if (oldAudioTrack) {
@@ -1071,14 +874,6 @@ export class ErmisDirectCall<ErmisChatGenerics extends ExtendableGenerics = Defa
 
       const newVideoTrack = newStream.getVideoTracks()[0];
       const oldVideoTrack = this.localStream.getVideoTracks()[0];
-
-      // Replace video track in peer connection
-      if (this.peer && oldVideoTrack) {
-        const sender = this.peer.getSenders().find((s) => s.track === oldVideoTrack);
-        if (sender) {
-          await sender.replaceTrack(newVideoTrack);
-        }
-      }
 
       // Replace video track in local stream
       if (oldVideoTrack) {

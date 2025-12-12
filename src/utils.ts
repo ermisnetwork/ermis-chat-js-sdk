@@ -525,3 +525,100 @@ export async function ensureMembersUserInfoLoaded<ErmisChatGenerics extends Exte
 
 export const getLatestCreatedAt = (messages: any[] = []) =>
   messages.length > 0 ? Math.max(...messages.map((msg) => new Date(msg.created_at).getTime())) : 0;
+
+export const createPacketWithHeader = (
+  data: ArrayBuffer | null,
+  timestamp: number | null,
+  type: string,
+  configMsg: any,
+): Uint8Array => {
+  let HEADER_SIZE: number;
+  let payload: Uint8Array;
+
+  // Config messages
+  if (['videoConfig', 'audioConfig', 'transciverState'].includes(type) && configMsg) {
+    HEADER_SIZE = 1;
+    const jsonString = JSON.stringify(configMsg);
+    const encoder = new TextEncoder();
+    payload = encoder.encode(jsonString);
+  } else if (type === 'connected') {
+    HEADER_SIZE = 1;
+    payload = new Uint8Array(0);
+  } else {
+    // Data packets
+    HEADER_SIZE = 5;
+    payload = new Uint8Array(data!);
+  }
+
+  const packet = new Uint8Array(HEADER_SIZE + payload.byteLength);
+
+  let typeCode: number = 0;
+  switch (type) {
+    case 'videoConfig':
+      typeCode = 0;
+      break;
+    case 'audioConfig':
+      typeCode = 1;
+      break;
+    case 'video-key':
+      typeCode = 2;
+      break;
+    case 'video-delta':
+      typeCode = 3;
+      break;
+    case 'audio':
+      typeCode = 4;
+      break;
+    case 'connected':
+      typeCode = 6;
+      break;
+    case 'transciverState':
+      typeCode = 7;
+      break;
+  }
+
+  // Byte 0: Type code
+  packet[0] = typeCode;
+
+  // Byte 1-4: Timestamp
+  if (timestamp !== null) {
+    const view = new DataView(packet.buffer);
+    view.setUint32(1, timestamp, false); // Little-endian = false (Big-endian)
+  }
+
+  packet.set(payload, HEADER_SIZE);
+
+  return packet;
+};
+
+export const base64Encode = (arrayBuffer: ArrayBuffer): string => {
+  let binary = '';
+  const bytes = new Uint8Array(arrayBuffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
+
+export const replaceCodecNumber = (input: string): string => {
+  const map: Record<string, string> = {
+    '2048': '123',
+    '4096': '153',
+    '8192': '156',
+    '16384': '183',
+    '32768': '186',
+  };
+
+  // Regex để tìm các key
+  const regex = /2048|4096|8192|16384|32768/g;
+
+  // Kiểm tra: Nếu input KHÔNG match bất kỳ số nào trong regex
+  // thì trả về chuỗi mặc định
+  if (!input.match(regex)) {
+    return 'hev1.1.6.L123.B0';
+  }
+
+  // Nếu có match, thực hiện thay thế
+  return input.replace(regex, (match) => map[match]);
+};
