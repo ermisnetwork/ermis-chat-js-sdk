@@ -3200,6 +3200,7 @@ export type SignalData = {
   is_video?: boolean;
   action?: string;
   signal?: Object;
+  metadata?: Object;
 };
 
 export enum CallAction {
@@ -3229,6 +3230,7 @@ export type CallEventData = {
   cid: string;
   callerInfo: UserCallInfo | undefined;
   receiverInfo: UserCallInfo | undefined;
+  metadata?: Object;
 };
 
 export type UserCallInfo = {
@@ -3236,3 +3238,54 @@ export type UserCallInfo = {
   name?: string;
   avatar?: string;
 };
+
+export type Metadata = {
+  address?: string;
+};
+
+export type INodeCall = {
+  connect: (address: string) => Promise<void>;
+  acceptConnection: () => Promise<void>;
+  sendControlFrame: (packet: Uint8Array) => Promise<void>;
+  sendAudioFrame: (packet: Uint8Array) => Promise<void>; // audio
+  sendFrame: (packet: Uint8Array) => Promise<void>; // video delta
+  beginWithGop: (packet: Uint8Array) => Promise<void>; // video key
+  asyncRecv: () => Promise<Uint8Array>;
+};
+
+export type VideoConfig = {
+  codec: string;
+  codedWidth: number;
+  codedHeight: number;
+  frameRate?: number;
+  orientation?: number;
+  rotation?: number;
+  description?: any;
+};
+
+export type AudioConfig = {
+  codec: string;
+  sampleRate: number;
+  numberOfChannels: number;
+  description?: string;
+};
+
+export type TransceiverState = {
+  audio_enable: boolean;
+  video_enable: boolean;
+};
+
+export interface IMediaReceiverEvents {
+  onConnected?: () => void;
+  onTransceiverState?: (state: any) => void;
+}
+
+export enum FRAME_TYPE {
+  VIDEO_CONFIG = 0,
+  AUDIO_CONFIG = 1,
+  VIDEO_KEY = 2,
+  VIDEO_DELTA = 3,
+  AUDIO = 4,
+  CONNECTED = 6,
+  TRANSCEIVER_STATE = 7,
+}
