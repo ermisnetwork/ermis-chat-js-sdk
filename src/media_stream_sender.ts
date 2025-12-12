@@ -75,6 +75,7 @@ export class MediaStreamSender {
   };
 
   public initAudioEncoder = (audioTrack: MediaStreamTrack): void => {
+    this.localStream = new MediaStream([audioTrack])
     this.audioConfigSent = false;
     this.hasAudio = !!audioTrack;
 
@@ -118,6 +119,10 @@ export class MediaStreamSender {
   };
 
   public initVideoEncoder(videoTrack: MediaStreamTrack): void {
+    if (this.localStream) {
+      this.localStream.addTrack(videoTrack)
+    }
+
     this.videoConfigSent = false;
     this.hasVideo = !!videoTrack;
 
@@ -173,16 +178,15 @@ export class MediaStreamSender {
   }
 
   public initEncoders = (stream: MediaStream): void => {
-    this.localStream = stream;
     const videoTrack = stream.getVideoTracks()[0];
     const audioTrack = stream.getAudioTracks()[0];
 
-    if (videoTrack) {
-      this.initVideoEncoder(videoTrack);
-    }
-
     if (audioTrack) {
       this.initAudioEncoder(audioTrack);
+    }
+
+    if (videoTrack) {
+      this.initVideoEncoder(videoTrack);
     }
   };
 
@@ -276,8 +280,6 @@ export class MediaStreamSender {
   private isReadyToSendData = (type: 'video' | 'audio'): boolean => {
     const videoReady = !this.hasVideo || this.videoConfigSent;
     const audioReady = !this.hasAudio || this.audioConfigSent;
-
-    // Phải đợi CẢ 2 config được gửi (nếu có track)
     const allConfigsSent = videoReady && audioReady;
 
     if (type === 'video') {

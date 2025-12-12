@@ -306,16 +306,7 @@ export class MediaStreamReceiver {
                 rotation: videoConfig.orientation,
                 ...(descriptionBuffer && { description: descriptionBuffer }),
               };
-
-              // Reset logic if codec changed
-              // const shouldResetDecoder =
-              //   !this.videoDecoder ||
-              //   this.videoDecoder.state === 'closed' ||
-              //   (this.lastVideoConfig && this.lastVideoConfig.codec !== newCodec);
-
-              // if (shouldResetDecoder) {
-              //   this.setupVideoDecoder();
-              // }
+              
 
               this.lastVideoConfig = decoderConfig;
 

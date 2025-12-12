@@ -54,8 +54,6 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
   /** Callback triggered when call events occur (incoming/outgoing) */
   onCallEvent?: (data: CallEventData) => void;
 
-  onAcceptCallEvent?: (event: any) => void;
-
   /** Callback triggered when local stream is available */
   onLocalStream?: (stream: MediaStream) => void;
 
@@ -163,9 +161,8 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
       // 1. Init Sender
       this.mediaSender = new MediaStreamSender(node as any);
 
-      // 2. Init Receiver với Callback
+      // 2. Init Receiver
       this.mediaReceiver = new MediaStreamReceiver(node as any, {
-        // Xử lý khi nhận được frame CONNECTED
         onConnected: () => {
           this.setCallStatus(CallStatus.CONNECTED);
           this.connectCall();
@@ -185,7 +182,6 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
           }
         },
 
-        // Xử lý khi nhận được frame TRANSCEIVER_STATE
         onTransceiverState: (state) => {
           if (typeof this.onDataChannelMessage === 'function') {
             this.onDataChannelMessage(state);
