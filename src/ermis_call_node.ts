@@ -17,6 +17,8 @@ import { MediaStreamReceiver } from './media_stream_receiver';
 export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> {
   wasmPath: string;
 
+  relayUrl = 'https://test-iroh.ermis.network.:8443';
+
   /** Reference to the Ermis Chat client instance */
   _client: ErmisChat<ErmisChatGenerics>;
 
@@ -129,7 +131,7 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
   public mediaSender: MediaStreamSender | null = null;
   public mediaReceiver: MediaStreamReceiver | null = null;
 
-  constructor(client: ErmisChat<ErmisChatGenerics>, sessionID: string, wasmPath: string) {
+  constructor(client: ErmisChat<ErmisChatGenerics>, sessionID: string, wasmPath: string, relayUrl: string) {
     this._client = client;
     this.cid = '';
     this.callType = '';
@@ -137,6 +139,7 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
     this.userID = client.userID;
     this.metadata = {};
     this.wasmPath = wasmPath;
+    this.relayUrl = relayUrl;
 
     this.listenSocketEvents();
     this.setupDeviceChangeListener();
@@ -155,7 +158,7 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
   private async initialize(): Promise<ErmisCall> {
     try {
       const node = new ErmisCall();
-      await node.spawn(['https://test-iroh.ermis.network.:8443']);
+      await node.spawn([this.relayUrl]);
       this.callNode = node;
 
       // 1. Init Sender
