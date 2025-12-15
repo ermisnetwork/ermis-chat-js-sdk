@@ -673,6 +673,11 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
       if (this.onLocalStream) {
         this.onLocalStream(this.localStream);
       }
+    } else {
+      this.localStream = stream;
+      if (this.onLocalStream) {
+        this.onLocalStream(this.localStream);
+      }
     }
   }
 
@@ -697,8 +702,9 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
   public async requestUpgradeCall(enabled: boolean) {
     if (enabled) {
       this.callType = 'video';
+      await this.addVideoTrackToLocalStream();
+
       if (this.localStream) {
-        await this.addVideoTrackToLocalStream();
         this.mediaSender?.initVideoEncoder(this.localStream?.getVideoTracks()[0]);
         const audioEnable = !!this.localStream?.getAudioTracks().some((track) => track.enabled);
         const videoEnable = !!this.localStream?.getVideoTracks().some((track) => track.enabled);
