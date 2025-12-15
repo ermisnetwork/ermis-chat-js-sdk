@@ -546,7 +546,8 @@ export const createPacketWithHeader = (
     payload = new Uint8Array(0);
   } else {
     // Data packets
-    HEADER_SIZE = 5;
+    // HEADER_SIZE = 5;
+    HEADER_SIZE = 9;
     payload = new Uint8Array(data!);
   }
 
@@ -580,10 +581,11 @@ export const createPacketWithHeader = (
   // Byte 0: Type code
   packet[0] = typeCode;
 
-  // Byte 1-4: Timestamp
+  // Byte 1-8: Timestamp
   if (timestamp !== null) {
     const view = new DataView(packet.buffer);
-    view.setUint32(1, timestamp, false); // Little-endian = false (Big-endian)
+    // view.setUint32(1, timestamp, false); // Little-endian = false (Big-endian)
+    view.setBigUint64(1, BigInt(timestamp), false);
   }
 
   packet.set(payload, HEADER_SIZE);

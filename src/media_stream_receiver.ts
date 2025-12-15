@@ -247,7 +247,7 @@ export class MediaStreamReceiver {
           ] as number[]
         ).includes(frameType)
           ? 1
-          : 5;
+          : 9; // 1 byte type + 8 bytes timestamp
 
         const payload = new Uint8Array(data.buffer, data.byteOffset + payloadOffset, data.byteLength - payloadOffset);
 
@@ -306,7 +306,6 @@ export class MediaStreamReceiver {
                 rotation: videoConfig.orientation,
                 ...(descriptionBuffer && { description: descriptionBuffer }),
               };
-              
 
               this.lastVideoConfig = decoderConfig;
 
@@ -359,13 +358,15 @@ export class MediaStreamReceiver {
               break;
             }
 
-            const timestamp = dataView.getUint32(1, false);
+            // const timestamp = dataView.getUint32(1, false);
+            const timestampBigInt = dataView.getBigUint64(1, false);
+            const timestamp = Number(timestampBigInt);
 
             try {
               this.videoDecoder.decode(
                 new EncodedVideoChunk({
                   type: isKeyFrame ? 'key' : 'delta',
-                  timestamp: timestamp * 1000,
+                  timestamp: timestamp,
                   data: payload,
                 }),
               );
@@ -385,11 +386,13 @@ export class MediaStreamReceiver {
           // --- AUDIO DATA ---
           case FRAME_TYPE.AUDIO: {
             if (this.audioDecoder?.state === 'configured') {
-              const timestamp = dataView.getUint32(1, false);
+              // const timestamp = dataView.getUint32(1, false);
+              const timestampBigInt = dataView.getBigUint64(1, false);
+              const timestamp = Number(timestampBigInt);
               this.audioDecoder.decode(
                 new EncodedAudioChunk({
                   type: 'key',
-                  timestamp: timestamp * 1000,
+                  timestamp: timestamp,
                   data: payload,
                 }),
               );

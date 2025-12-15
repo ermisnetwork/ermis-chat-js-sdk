@@ -64,6 +64,11 @@ export class MediaStreamSender {
       this.audioEncoder = null;
     }
 
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
+    }
+
     // Reset configs and flags
     this.videoConfig = null;
     this.audioConfig = null;
@@ -75,7 +80,7 @@ export class MediaStreamSender {
   };
 
   public initAudioEncoder = (audioTrack: MediaStreamTrack): void => {
-    this.localStream = new MediaStream([audioTrack])
+    this.localStream = new MediaStream([audioTrack]);
     this.audioConfigSent = false;
     this.hasAudio = !!audioTrack;
 
@@ -98,7 +103,8 @@ export class MediaStreamSender {
         if (chunk && this.isReadyToSendData('audio')) {
           const data = new ArrayBuffer(chunk.byteLength);
           chunk.copyTo(data);
-          const timestamp = Math.floor(chunk.timestamp / 1000);
+          // const timestamp = Math.floor(chunk.timestamp / 1000);
+          const timestamp = chunk.timestamp;
 
           const packet = createPacketWithHeader(data, timestamp, 'audio', null);
           this.sendPacketOrQueue(packet, 'audio', null);
@@ -120,7 +126,7 @@ export class MediaStreamSender {
 
   public initVideoEncoder(videoTrack: MediaStreamTrack): void {
     if (this.localStream) {
-      this.localStream.addTrack(videoTrack)
+      this.localStream.addTrack(videoTrack);
     }
 
     this.videoConfigSent = false;
@@ -154,7 +160,8 @@ export class MediaStreamSender {
           const data = new ArrayBuffer(chunk.byteLength);
           chunk.copyTo(data);
           const frameType = chunk.type === 'key' ? 'video-key' : 'video-delta';
-          const timestamp = Math.floor(chunk.timestamp / 1000);
+          // const timestamp = Math.floor(chunk.timestamp / 1000);
+          const timestamp = chunk.timestamp;
 
           const packet = createPacketWithHeader(data, timestamp, frameType, null);
           this.sendPacketOrQueue(packet, 'video', frameType);

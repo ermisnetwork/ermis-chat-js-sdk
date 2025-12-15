@@ -663,10 +663,23 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
     return await this._sendSignal({ action: CallAction.HEALTH_CALL });
   }
 
+  private async addVideoTrackToLocalStream() {
+    const mediaConstraints = await this.getMediaConstraints();
+    const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    const newVideoTrack = stream.getVideoTracks()[0];
+    if (this.localStream) {
+      this.localStream.addTrack(newVideoTrack);
+
+      if (this.onLocalStream) {
+        this.onLocalStream(this.localStream);
+      }
+    }
+  }
+
   public async upgradeCall() {
     try {
       this.callType = 'video';
-      await this.startLocalStream();
+      await this.addVideoTrackToLocalStream();
       await this._sendSignal({ action: CallAction.UPGRADE_CALL });
 
       if (this.localStream) {
@@ -684,9 +697,8 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
   public async requestUpgradeCall(enabled: boolean) {
     if (enabled) {
       this.callType = 'video';
-      await this.startLocalStream();
-
       if (this.localStream) {
+        await this.addVideoTrackToLocalStream();
         this.mediaSender?.initVideoEncoder(this.localStream?.getVideoTracks()[0]);
         const audioEnable = !!this.localStream?.getAudioTracks().some((track) => track.enabled);
         const videoEnable = !!this.localStream?.getVideoTracks().some((track) => track.enabled);
