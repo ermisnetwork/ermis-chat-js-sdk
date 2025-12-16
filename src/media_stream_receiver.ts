@@ -100,6 +100,8 @@ export class MediaStreamReceiver {
   };
 
   public setupVideoDecoder = (): void => {
+    if (!this.videoWriter) return;
+
     if (this.videoDecoder) {
       try {
         if (this.videoDecoder.state !== 'closed') this.videoDecoder.close();
@@ -134,19 +136,14 @@ export class MediaStreamReceiver {
         console.error('❌ VideoDecoder CRASHED:', err);
         this.isWaitingForKeyFrame = true;
 
-        // --- CƠ CHẾ SELF-HEALING AN TOÀN (ANTI-FREEZE) ---
-        console.log('♻️ Attempting to respawn VideoDecoder...');
-
-        // 1. Tạo lại decoder
-        this.setupVideoDecoder();
-
-        // 2. Nạp lại config cũ
-        if (this.lastVideoConfig && this.videoDecoder) {
-          try {
-            console.log('♻️ Re-applying last known video config...');
-            this.videoDecoder.configure(this.lastVideoConfig);
-          } catch (configErr) {
-            console.error('Failed to re-configure after crash:', configErr);
+        if (this.videoWriter) {
+          // Chỉ hồi sinh nếu Writer vẫn còn sống
+          console.log('♻️ Attempting to respawn VideoDecoder...');
+          this.setupVideoDecoder();
+          if (this.lastVideoConfig && this.videoDecoder) {
+            try {
+              this.videoDecoder.configure(this.lastVideoConfig);
+            } catch (configErr) {}
           }
         }
       },
@@ -422,23 +419,33 @@ export class MediaStreamReceiver {
   };
 
   private resetDecoders = (): void => {
-    // Đóng VideoDecoder
+    if (this.videoWriter) {
+      try {
+        this.videoWriter.abort('Stream stopped').catch(() => {});
+        this.videoWriter.releaseLock();
+      } catch (e) {
+        console.warn('Error closing video writer:', e);
+      }
+      this.videoWriter = null;
+    }
+
     if (this.videoDecoder) {
       try {
-        if (this.videoDecoder.state !== 'closed') this.videoDecoder.close();
-      } catch (e) {
-        console.warn('Error closing video decoder:', e);
-      }
+        if (this.videoDecoder.state !== 'closed') {
+          this.videoDecoder.reset();
+          this.videoDecoder.close();
+        }
+      } catch (e) {}
       this.videoDecoder = null;
     }
 
-    // Đóng AudioDecoder
     if (this.audioDecoder) {
       try {
-        if (this.audioDecoder.state !== 'closed') this.audioDecoder.close();
-      } catch (e) {
-        console.warn('Error closing audio decoder:', e);
-      }
+        if (this.audioDecoder.state !== 'closed') {
+          this.audioDecoder.reset();
+          this.audioDecoder.close();
+        }
+      } catch (e) {}
       this.audioDecoder = null;
     }
 
@@ -453,7 +460,6 @@ export class MediaStreamReceiver {
     }
 
     // Reset các biến
-    this.videoWriter = null;
     this.isWaitingForKeyFrame = true;
     this.mediaDestination = null;
     this.nextStartTime = 0;

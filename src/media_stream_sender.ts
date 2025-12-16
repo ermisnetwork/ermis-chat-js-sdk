@@ -4,6 +4,7 @@ import { AudioConfig, INodeCall, TransceiverState, VideoConfig } from './types';
 export class MediaStreamSender {
   private videoEncoder: VideoEncoder | null = null;
   private audioEncoder: AudioEncoder | null = null;
+  private videoReader: ReadableStreamDefaultReader<VideoFrame> | null = null;
 
   private localStream: MediaStream | null = null;
 
@@ -53,20 +54,32 @@ export class MediaStreamSender {
    * Dừng và reset encoders
    */
   public stop = (): void => {
-    // Reset and close video encoder
+    if (this.videoReader) {
+      try {
+        this.videoReader.cancel('Stream stopped').catch(() => {});
+      } catch (e) {}
+      this.videoReader = null;
+    }
+
     if (this.videoEncoder) {
-      // Có thể gọi flush/close nếu cần thiết, tùy browser implementation
+      try {
+        if (this.videoEncoder.state !== 'closed') {
+          this.videoEncoder.reset(); // Xả frame
+          this.videoEncoder.close();
+        }
+      } catch (e) {}
       this.videoEncoder = null;
     }
 
     // Reset and close audio encoder
     if (this.audioEncoder) {
+      try {
+        if (this.audioEncoder.state !== 'closed') {
+          this.audioEncoder.reset();
+          this.audioEncoder.close();
+        }
+      } catch (e) {}
       this.audioEncoder = null;
-    }
-
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
-      this.localStream = null;
     }
 
     // Reset configs and flags
@@ -77,6 +90,11 @@ export class MediaStreamSender {
     this.audioConfigSent = false;
     this.hasVideo = false;
     this.hasAudio = false;
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
+    }
   };
 
   public initAudioEncoder = (audioTrack: MediaStreamTrack): void => {
@@ -225,11 +243,13 @@ export class MediaStreamSender {
     try {
       // @ts-ignore: MediaStreamTrackProcessor is explicitly defined in WebCodecs types
       const videoProcessor = new MediaStreamTrackProcessor({ track: videoTrack });
-      const videoReader = videoProcessor.readable.getReader();
+      this.videoReader = videoProcessor.readable.getReader();
 
       let frameCounter = 0;
       while (true) {
-        const { done, value: frame } = await videoReader.read();
+        if (!this.videoReader) break;
+
+        const { done, value: frame } = await this.videoReader.read();
         if (done) break;
 
         if (!this.videoEncoder) {
@@ -251,6 +271,13 @@ export class MediaStreamSender {
       }
     } catch (error: any) {
       console.error(`Error processing video frames: ${error.message}`);
+    } finally {
+      if (this.videoReader) {
+        try {
+          this.videoReader.releaseLock();
+        } catch (e) {}
+        this.videoReader = null;
+      }
     }
   };
 

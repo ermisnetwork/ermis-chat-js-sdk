@@ -522,10 +522,19 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
   }
 
   private cleanupCall() {
-    // Stop local stream if exists
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
-      this.localStream = null;
+    if (this.mediaSender) {
+      this.mediaSender?.stop();
+      this.mediaSender = null;
+    }
+    if (this.mediaReceiver) {
+      this.mediaReceiver.stop();
+      this.mediaReceiver = null;
+    }
+
+    if (this.callNode) {
+      this.callNode?.closeConnection();
+      this.callNode?.closeEndpoint();
+      this.callNode = null;
     }
 
     // Clear all timeouts and intervals
@@ -559,19 +568,11 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
     this.cid = '';
     this.callType = '';
     this.metadata = {};
-    if (this.mediaSender) {
-      this.mediaSender?.stop();
-      this.mediaSender = null;
-    }
-    if (this.mediaReceiver) {
-      this.mediaReceiver.stop();
-      this.mediaReceiver = null;
-    }
 
-    if (this.callNode) {
-      this.callNode?.closeConnection();
-      this.callNode?.closeEndpoint();
-      this.callNode = null;
+    // Stop local stream if exists
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream = null;
     }
   }
 
@@ -647,15 +648,18 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
   }
 
   public async endCall() {
-    return await this._sendSignal({ action: CallAction.END_CALL });
+    await this._sendSignal({ action: CallAction.END_CALL });
+    this.destroy();
   }
 
   public async rejectCall() {
-    return await this._sendSignal({ action: CallAction.REJECT_CALL });
+    await this._sendSignal({ action: CallAction.REJECT_CALL });
+    this.destroy();
   }
 
   private async missCall() {
-    return await this._sendSignal({ action: CallAction.MISS_CALL });
+    await this._sendSignal({ action: CallAction.MISS_CALL });
+    this.destroy();
   }
 
   private async connectCall() {
