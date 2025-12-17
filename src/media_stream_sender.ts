@@ -325,7 +325,7 @@ export class MediaStreamSender {
     return false;
   };
 
-  public sendVideoConfig = async () => {
+  private sendVideoConfig = async () => {
     if (this.videoConfig && !this.videoConfigSent) {
       try {
         const configPacket = createPacketWithHeader(null, null, 'videoConfig', this.videoConfig);

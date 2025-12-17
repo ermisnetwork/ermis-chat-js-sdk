@@ -421,11 +421,14 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
               metadata: this.metadata,
             });
           }
-          // Set missCall timeout if no connection after 60s
-          if (this.missCallTimeout) clearTimeout(this.missCallTimeout);
-          this.missCallTimeout = setTimeout(async () => {
-            await this.missCall();
-          }, 60000);
+
+          if (eventUserId === this.userID) {
+            // Set missCall timeout if no connection after 60s
+            if (this.missCallTimeout) clearTimeout(this.missCallTimeout);
+            this.missCallTimeout = setTimeout(async () => {
+              await this.missCall();
+            }, 60000);
+          }
           break;
 
         case CallAction.ACCEPT_CALL:
@@ -442,28 +445,12 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
               await this.mediaSender.sendConfigs();
             }
           }
-
-          // this.setCallStatus(CallStatus.CONNECTED);
-          // this.connectCall();
-          // if (this.missCallTimeout) {
-          //   clearTimeout(this.missCallTimeout);
-          //   this.missCallTimeout = null;
-          // }
-          // if (this.healthCallServerInterval) clearInterval(this.healthCallServerInterval);
-          // this.healthCallServerInterval = setInterval(() => {
-          //   this.healthCall();
-          // }, 10000);
-
-          // const remoteStream = this.mediaReceiver?.getRemoteStream();
-
-          // if (remoteStream && this.onRemoteStream) {
-          //   this.onRemoteStream(remoteStream);
-          // }
           break;
 
         case CallAction.END_CALL:
         case CallAction.REJECT_CALL:
         case CallAction.MISS_CALL:
+          // this.setCallStatus(CallStatus.ENDED);
           this.destroy();
           break;
       }
@@ -532,8 +519,12 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
     }
 
     if (this.callNode) {
-      this.callNode?.closeConnection();
       this.callNode?.closeEndpoint();
+
+      if (this.callStatus === CallStatus.CONNECTED) {
+        this.callNode?.closeConnection();
+      }
+
       this.callNode = null;
     }
 
@@ -563,7 +554,7 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
       this.healthCallWarningTimeout = null;
     }
 
-    this.setCallStatus(CallStatus.ENDED);
+    // this.setCallStatus(CallStatus.ENDED);
     this.setConnectionMessage(null);
     this.cid = '';
     this.callType = '';
@@ -574,6 +565,8 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
     }
+
+    this.setCallStatus(CallStatus.ENDED);
   }
 
   private destroy() {
