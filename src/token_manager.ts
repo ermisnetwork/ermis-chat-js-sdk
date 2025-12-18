@@ -135,17 +135,17 @@ export class TokenManager<ErmisChatGenerics extends ExtendableGenerics = Default
       return this.token;
     }
 
-    if (this.user && this.user.anon && !this.token) {
-      return this.token;
-    }
+    // if (this.user && this.user.anon && !this.token) {
+    //   return this.token;
+    // }
 
-    if (this.secret) {
-      return JWTServerToken(this.secret);
-    }
+    // if (this.secret) {
+    //   return JWTServerToken(this.secret);
+    // }
 
-    throw new Error(
-      `Both secret and user tokens are not set. Either client.connectUser wasn't called or client.disconnect was called`,
-    );
+    // throw new Error(
+    //   `Both secret and user tokens are not set. Either client.connectUser wasn't called or client.disconnect was called`,
+    // );
   };
 
   isStatic = () => this.type === 'static';

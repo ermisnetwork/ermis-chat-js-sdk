@@ -231,6 +231,7 @@ export class MediaStreamReceiver {
         //     [FRAME_TYPE.AUDIO]: 'AUDIO',
         //     [FRAME_TYPE.CONNECTED]: 'CONNECTED',
         //     [FRAME_TYPE.TRANSCEIVER_STATE]: 'TRANSCEIVER_STATE',
+        //     [FRAME_TYPE.ORIENTATION]: 'ORIENTATION',
         //   }[frameType] || 'UNKNOWN';
 
         // console.log(`----frameType ${frameTypeName}----`, frameType);
@@ -241,6 +242,7 @@ export class MediaStreamReceiver {
             FRAME_TYPE.AUDIO_CONFIG,
             FRAME_TYPE.CONNECTED,
             FRAME_TYPE.TRANSCEIVER_STATE,
+            FRAME_TYPE.ORIENTATION,
           ] as number[]
         ).includes(frameType)
           ? 1
@@ -300,7 +302,7 @@ export class MediaStreamReceiver {
                 frameRate: videoConfig.frameRate,
                 codedWidth: videoConfig.codedWidth,
                 codedHeight: videoConfig.codedHeight,
-                rotation: videoConfig.orientation,
+                ...(videoConfig.orientation && { rotation: videoConfig.orientation }),
                 ...(descriptionBuffer && { description: descriptionBuffer }),
               };
 
@@ -408,6 +410,29 @@ export class MediaStreamReceiver {
             if (this.events.onTransceiverState) {
               this.events.onTransceiverState(transceiverState);
             }
+            break;
+
+          case FRAME_TYPE.ORIENTATION: {
+            const orientation = dataView.getInt32(1, false);
+            if (this.videoDecoder && this.lastVideoConfig && this.lastVideoConfig.rotation !== orientation) {
+              this.lastVideoConfig.rotation = orientation;
+              try {
+                // 1. Configure lại với rotation mới
+                this.videoDecoder.configure(this.lastVideoConfig);
+
+                // 2. QUAN TRỌNG: Phải chờ KeyFrame mới để tránh lỗi decode Delta frame sau khi reset
+                this.isWaitingForKeyFrame = true;
+
+                console.log('🔄 Reconfigured rotation to', orientation, '- Waiting for next KeyFrame');
+              } catch (configErr) {
+                console.error('Error reconfiguring VideoDecoder with new orientation:', configErr);
+              }
+            }
+            break;
+          }
+
+          default:
+            console.warn('❓ Unknown frame type received:', frameType);
             break;
         }
       } catch (error) {

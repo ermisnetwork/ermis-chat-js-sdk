@@ -516,7 +516,14 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       headers,
     });
     if (!response.ok) {
-      throw new Error('Failed to fetch external auth token');
+      let errorMsg = '';
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.message || JSON.stringify(errorData);
+      } catch {
+        errorMsg = await response.text();
+      }
+      throw new Error(errorMsg);
     }
     return await response.json();
   }
@@ -536,18 +543,15 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     // If external auth is enabled, get the token from the server
     if (extenal_auth) {
       // this.tokenManager.setTokenOrProvider(userTokenOrProvider, user);
-      try {
-        const data = {
-          apiKey: this.key,
-          user,
-          token: userTokenOrProvider,
-        };
-        const external_auth_token = await this.getExternalAuthToken(data);
+      const data = {
+        apiKey: this.key,
+        user,
+        token: userTokenOrProvider,
+      };
+      const external_auth_token = await this.getExternalAuthToken(data);
 
-        userTokenOrProvider = external_auth_token.token;
-      } catch (error) {
-        throw new Error('Failed to get external auth token');
-      }
+      userTokenOrProvider = external_auth_token.token;
+      user.id = external_auth_token.user_id;
     }
 
     /**
