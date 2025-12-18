@@ -132,10 +132,10 @@ export class MediaStreamSender {
     });
 
     audioEncoder.configure({
-      codec: 'opus',
+      codec: 'mp4a.40.2',
       sampleRate: 48000,
       numberOfChannels: 1,
-      bitrate: 64000,
+      bitrate: 128000,
     });
 
     this.audioEncoder = audioEncoder;
@@ -225,7 +225,17 @@ export class MediaStreamSender {
   };
 
   public async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
-    // Process video
+    // 1. Dừng reader của track cũ (quan trọng)
+    if (this.videoReader) {
+      try {
+        // Việc gọi cancel sẽ làm Promise tại dòng await read() bên dưới throw lỗi hoặc trả về done
+        await this.videoReader.cancel('Replacing track');
+      } catch (e) {
+        // Bỏ qua lỗi khi cancel
+      }
+      this.videoReader = null;
+    }
+
     if (track) {
       this.processVideoFrames(track);
     }
@@ -276,7 +286,7 @@ export class MediaStreamSender {
         try {
           this.videoReader.releaseLock();
         } catch (e) {}
-        this.videoReader = null;
+        // this.videoReader = null;
       }
     }
   };

@@ -560,10 +560,14 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
     this.callType = '';
     this.metadata = {};
 
-    // Stop local stream if exists
     if (this.localStream) {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
+    }
+
+    if (this.remoteStream) {
+      this.remoteStream.getTracks().forEach((track) => track.stop());
+      this.remoteStream = null;
     }
 
     this.setCallStatus(CallStatus.ENDED);
