@@ -1459,7 +1459,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       // data: this._data,
       state: true,
       project_id,
-      messages: { limit, id_gt: message_id },
+      messages: { limit, id_around: message_id },
     });
 
     const users = Object.values(this.getClient().state.users);
