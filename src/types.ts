@@ -3278,6 +3278,9 @@ export type TransceiverState = {
 export interface IMediaReceiverEvents {
   onConnected?: () => void;
   onTransceiverState?: (state: any) => void;
+  onRequestConfig?: () => void;
+  onRequestKeyFrame?: () => void;
+  onEndCall?: () => void;
 }
 
 export enum FRAME_TYPE {
@@ -3289,4 +3292,7 @@ export enum FRAME_TYPE {
   ORIENTATION = 5,
   CONNECTED = 6,
   TRANSCEIVER_STATE = 7,
+  REQUEST_CONFIG = 8,
+  REQUEST_KEY_FRAME = 9,
+  END_CALL = 10,
 }

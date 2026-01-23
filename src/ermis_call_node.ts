@@ -190,6 +190,21 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
             this.onDataChannelMessage(state);
           }
         },
+
+        onRequestConfig: () => {
+          console.log('📤 Responding to REQUEST_CONFIG by sending configs');
+          this.mediaSender?.sendConfigs();
+        },
+
+        onRequestKeyFrame: () => {
+          console.log('📤 Responding to REQUEST_KEY_FRAME by forcing key frame');
+          this.mediaSender?.requestKeyFrame();
+        },
+
+        onEndCall: () => {
+          console.log('📥 Received END_CALL from remote peer');
+          this.destroy();
+        },
       });
 
       return node;
@@ -233,8 +248,14 @@ export class ErmisCallNode<ErmisChatGenerics extends ExtendableGenerics = Defaul
         session_id: this.sessionID,
       });
     } catch (error: any) {
+      const action = payload.action;
+
+      // Skip error message for HEALTH_CALL action
+      if (action === CallAction.HEALTH_CALL) {
+        return;
+      }
+
       if (typeof this.onError === 'function') {
-        const action = payload.action;
         if (error.code === 'ERR_NETWORK') {
           if (action === CallAction.CREATE_CALL) {
             this.onError('Unable to make the call. Please check your network connection');

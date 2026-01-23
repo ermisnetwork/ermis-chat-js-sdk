@@ -232,6 +232,9 @@ export class MediaStreamReceiver {
         //     [FRAME_TYPE.CONNECTED]: 'CONNECTED',
         //     [FRAME_TYPE.TRANSCEIVER_STATE]: 'TRANSCEIVER_STATE',
         //     [FRAME_TYPE.ORIENTATION]: 'ORIENTATION',
+        //     [FRAME_TYPE.REQUEST_CONFIG]: 'REQUEST_CONFIG',
+        //     [FRAME_TYPE.REQUEST_KEY_FRAME]: 'REQUEST_KEY_FRAME',
+        //     [FRAME_TYPE.END_CALL]: 'END_CALL',
         //   }[frameType] || 'UNKNOWN';
 
         // console.log(`----frameType ${frameTypeName}----`, frameType);
@@ -243,6 +246,9 @@ export class MediaStreamReceiver {
             FRAME_TYPE.CONNECTED,
             FRAME_TYPE.TRANSCEIVER_STATE,
             FRAME_TYPE.ORIENTATION,
+            FRAME_TYPE.REQUEST_CONFIG,
+            FRAME_TYPE.REQUEST_KEY_FRAME,
+            FRAME_TYPE.END_CALL,
           ] as number[]
         ).includes(frameType)
           ? 1
@@ -430,6 +436,27 @@ export class MediaStreamReceiver {
             }
             break;
           }
+
+          case FRAME_TYPE.REQUEST_CONFIG:
+            console.log('📥 Received REQUEST_CONFIG');
+            if (this.events.onRequestConfig) {
+              this.events.onRequestConfig();
+            }
+            break;
+
+          case FRAME_TYPE.REQUEST_KEY_FRAME:
+            console.log('📥 Received REQUEST_KEY_FRAME');
+            if (this.events.onRequestKeyFrame) {
+              this.events.onRequestKeyFrame();
+            }
+            break;
+
+          case FRAME_TYPE.END_CALL:
+            console.log('📥 Received END_CALL');
+            if (this.events.onEndCall) {
+              this.events.onEndCall();
+            }
+            break;
 
           default:
             console.warn('❓ Unknown frame type received:', frameType);

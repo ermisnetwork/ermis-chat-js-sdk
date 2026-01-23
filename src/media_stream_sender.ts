@@ -17,6 +17,8 @@ export class MediaStreamSender {
   private hasVideo: boolean = false;
   private hasAudio: boolean = false;
 
+  private forceKeyFrame: boolean = false;
+
   private nodeCall: INodeCall;
 
   constructor(nodeCall: INodeCall) {
@@ -247,6 +249,14 @@ export class MediaStreamSender {
     }
   }
 
+  /**
+   * Yêu cầu gửi keyframe ngay lập tức (được gọi khi nhận REQUEST_KEY_FRAME từ receiver)
+   */
+  public requestKeyFrame = (): void => {
+    console.log('📥 KeyFrame requested');
+    this.forceKeyFrame = true;
+  };
+
   // ================= PRIVATE METHODS =================
 
   private processVideoFrames = async (videoTrack: MediaStreamTrack) => {
@@ -269,7 +279,11 @@ export class MediaStreamSender {
 
         if (frame) {
           frameCounter += 1;
-          const keyFrame = frameCounter % 60 === 0;
+          const keyFrame = frameCounter % 60 === 0 || this.forceKeyFrame;
+          if (this.forceKeyFrame) {
+            console.log('📤 Sending forced KeyFrame');
+            this.forceKeyFrame = false;
+          }
           try {
             this.videoEncoder.encode(frame, { keyFrame });
           } catch (err) {
