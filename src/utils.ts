@@ -294,8 +294,7 @@ export function formatMessage<ErmisChatGenerics extends ExtendableGenerics = Def
      */
     __html: message.html,
     // parse the date..
-    // pinned_at: message.pinned_at ? new Date(message.pinned_at) : null,
-    pinned_at: null,
+    pinned_at: message.pinned_at ? new Date(message.pinned_at) : null,
     created_at: message.created_at ? new Date(message.created_at) : new Date(),
     updated_at: message.updated_at ? new Date(message.updated_at) : new Date(),
     status: message.status || 'received',

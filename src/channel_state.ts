@@ -149,8 +149,7 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
        */
       __html: message.html,
       // parse the date..
-      // pinned_at: message.pinned_at ? new Date(message.pinned_at) : null,
-      pinned_at: null,
+      pinned_at: message.pinned_at ? new Date(message.pinned_at) : null,
       created_at: message.created_at ? new Date(message.created_at) : new Date(),
       updated_at: message.updated_at ? new Date(message.updated_at) : null,
       status: message.status || 'received',
@@ -272,6 +271,12 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
     for (let i = 0; i < pinnedMessages.length; i += 1) {
       this.addPinnedMessage(pinnedMessages[i]);
     }
+    // Sort by pinned_at descending (newest pin first)
+    this.pinnedMessages.sort((a, b) => {
+      const timeA = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+      const timeB = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+      return timeB - timeA;
+    });
   }
 
   /**
@@ -281,12 +286,11 @@ export class ChannelState<ErmisChatGenerics extends ExtendableGenerics = Default
    *
    */
   addPinnedMessage(pinnedMessage: MessageResponse<ErmisChatGenerics>) {
-    this.pinnedMessages = this._addToMessageList(
-      this.pinnedMessages,
-      this.formatMessage(pinnedMessage),
-      false,
-      'pinned_at',
-    );
+    const formatted = this.formatMessage(pinnedMessage);
+    // Remove existing entry if present (to avoid duplicates)
+    this.pinnedMessages = this.pinnedMessages.filter((msg) => msg.id !== formatted.id);
+    // Add to the beginning of the list (newest pin first)
+    this.pinnedMessages = [formatted, ...this.pinnedMessages];
   }
 
   /**

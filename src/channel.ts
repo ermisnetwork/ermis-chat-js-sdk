@@ -231,7 +231,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       `${this.getClient().baseURL}/channels/${channel.type}/${channel.channelID}` + '/message',
       {
         message: { ...message },
-        // ...options,
       },
     );
   }

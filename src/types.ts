@@ -2429,6 +2429,7 @@ export type Message<ErmisChatGenerics extends ExtendableGenerics = DefaultGeneri
   mentioned_users?: string[];
   cid?: string;
   forward_cid?: string;
+  forward_message_id?: string;
   poll_type?: string; // single | multiple
   poll_choices?: string[];
   sticker_url?: string;
