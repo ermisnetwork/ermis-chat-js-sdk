@@ -2224,17 +2224,19 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           const user = getUserInfo(event.member.user_id, users);
           event.member.user = user;
           channelState.members[event.member.user_id] = event.member;
-        }
-        break;
-      case 'member.blocked':
-      case 'member.unblocked':
-        if (event.member?.user_id) {
-          const user = getUserInfo(event.member.user_id, users);
-          event.member.user = user;
           channelState.membership = event.member;
           this.state.membership = event.member;
         }
         break;
+      // case 'member.blocked':
+      // case 'member.unblocked':
+      //   if (event.member?.user_id) {
+      //     const user = getUserInfo(event.member.user_id, users);
+      //     event.member.user = user;
+      //     channelState.membership = event.member;
+      //     this.state.membership = event.member;
+      //   }
+      //   break;
       case 'channel.pinned':
         if (channel.data) {
           channel.data.is_pinned = true;
