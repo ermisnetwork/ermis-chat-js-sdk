@@ -1572,6 +1572,36 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     );
   }
 
+  async deleteMessageForMe(messageId: string, forMe?: boolean) {
+    return await this.getClient().delete<APIResponse & { message: MessageResponse<ErmisChatGenerics> }>(
+      this.getClient().baseURL + `/messages/messaging/${this.id}/${messageId}?for_me=${forMe}`,
+    );
+  }
+
+  async deleteMessageChannelForMe(messageId: string, forMe?: boolean) {
+    return await this.getClient().delete<APIResponse & { message: MessageResponse<ErmisChatGenerics> }>(
+      this.getClient().baseURL + `/messages/${this.type}/${this.id}/${messageId}?for_me=${forMe}`,
+    );
+  }
+
+  async deleteChatDM(forMe?: boolean) {
+    return await this.getClient().delete<MessageResponse<ErmisChatGenerics>>(
+      this.getClient().baseURL + `/channels/messaging/${this.id}/chat?for_me=${forMe}`,
+    );
+  }
+
+  /**
+   * deleteChannel - Deletes the channel (only Owner can delete)
+   * DELETE /channels/{channel_type}/{channel_id}
+   *
+   * @return {Promise<APIResponse>}
+   */
+  async deleteChannel() {
+    return await this.getClient().delete<APIResponse>(
+      this.getClient().baseURL + `/channels/${this.type}/${this.id}`,
+    );
+  }
+
   // async getThumbBlobVideo(file: File) {
   //   return new Promise((resolve, reject) => {
   //     const seekTo = 0.1;
@@ -1862,7 +1892,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           this._extendEventWithOwnReactions(event);
           //! NOTE: check lai o day
           channelState.removeMessage(event.message);
-          channelState.addMessageSorted(event.message, false, false);
+          // channelState.addMessageSorted(event.message, false, false);
           // if (event.hard_delete) channelState.removeMessage(event.message);
           // else channelState.addMessageSorted(event.message, false, false);
 
@@ -1978,6 +2008,14 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           channelState.removePinnedMessage(event.message);
         }
         break;
+      case 'message.deleted_for_me':
+        if (event.message) {
+          const user = getUserInfo(event.message.user?.id || '', users);
+          event.message.user = user;
+          channelState.removeMessage(event.message);
+          channelState.removeQuotedMessageReferences(event.message);
+        }
+        break;
       case 'channel.truncate':
         if (event.channel?.created_at) {
           const truncatedAt = +new Date(event.channel.created_at);
@@ -2059,6 +2097,67 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             hidden: event.channel?.hidden ?? channel.data?.hidden,
             own_capabilities: event.channel?.own_capabilities ?? channel.data?.own_capabilities,
           };
+        }
+        break;
+      case 'channel.deleted':
+        // Doc: Owner xóa channel, clear toàn bộ messages và đánh dấu channel deleted
+        channelState.clearMessages();
+        if (event.channel) {
+          channel.data = { ...channel.data, ...event.channel, deleted_at: event.created_at };
+        }
+        break;
+      case 'chat_dm.deleted_for_me':
+        // Doc: User xóa channel, clear toàn bộ messages và đánh dấu channel deleted
+        if (event.channel?.created_at) {
+          const deletedForMeAt = +new Date(event.channel.created_at);
+          channelState.messageSets.forEach((messageSet, messageSetIndex) => {
+            messageSet.messages.forEach(({ created_at: createdAt, id }) => {
+              if (deletedForMeAt > +createdAt) channelState.removeMessage({ id, messageSetIndex });
+            });
+          });
+
+          channelState.pinnedMessages.forEach(({ id, created_at: createdAt }) => {
+            if (deletedForMeAt > +createdAt)
+              channelState.removePinnedMessage({ id } as MessageResponse<ErmisChatGenerics>);
+          });
+        } else {
+          channelState.clearMessages();
+        }
+
+        channelState.unreadCount = 0;
+        // system messages don't increment unread counts
+        if (event.message) {
+          channelState.addMessageSorted(event.message);
+          if (event.message.pinned) {
+            channelState.addPinnedMessage(event.message);
+          }
+        }
+        break;
+      case 'chat_dm.deleted_for_everyone':
+        // Doc: event payload chỉ có channel_id, channel_type, user (không có message)
+        if (event.channel?.created_at) {
+          const deletedEveryoneAt = +new Date(event.channel.created_at);
+          channelState.messageSets.forEach((messageSet, messageSetIndex) => {
+            messageSet.messages.forEach(({ created_at: createdAt, id }) => {
+              if (deletedEveryoneAt > +createdAt) channelState.removeMessage({ id, messageSetIndex });
+            });
+          });
+
+          channelState.pinnedMessages.forEach(({ id, created_at: createdAt }) => {
+            if (deletedEveryoneAt > +createdAt)
+              channelState.removePinnedMessage({ id } as MessageResponse<ErmisChatGenerics>);
+          });
+        } else {
+          channelState.clearMessages();
+        }
+
+        channelState.unreadCount = 0;
+        // system messages don't increment unread counts
+        if (event.message) {
+          channelState.addMessageSorted(event.message);
+          if (event.message.pinned) {
+            channelState.addPinnedMessage(event.message);
+          }
         }
         break;
       // case 'poll.updated':

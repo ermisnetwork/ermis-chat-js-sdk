@@ -1717,7 +1717,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
   }
 
   /**
@@ -3179,6 +3179,17 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     }
     return await this.delete<APIResponse & { message: MessageResponse<ErmisChatGenerics> }>(
       this.baseURL + `/messages/${messageID}`,
+      params,
+    );
+  }
+
+  async deleteMessageForMe(channelID: string, messageID: string, hardDelete?: boolean, forMe?: boolean) {
+    let params = {};
+    if (hardDelete) {
+      params = { hard: true };
+    }
+    return await this.delete<APIResponse & { message: MessageResponse<ErmisChatGenerics> }>(
+      this.baseURL + `/messages/messaging/${channelID}/${messageID}/chat?for_me=${forMe}`,
       params,
     );
   }

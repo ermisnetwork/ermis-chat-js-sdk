@@ -28,6 +28,7 @@ export const EVENT_MAP = {
   'message.undeleted': true,
   'message.pinned': true,
   'message.unpinned': true,
+  'message.deleted_for_me': true,
   'notification.added_to_channel': true,
   'notification.channel_deleted': true,
   'notification.channel_mutes_updated': true,
@@ -74,4 +75,6 @@ export const EVENT_MAP = {
   'channel.topic.closed': true,
   'channel.topic.reopen': true,
   'channel.topic.updated': true,
+  'chat_dm.deleted_for_me': true,
+  'chat_dm.deleted_for_everyone': true,
 };
