@@ -546,7 +546,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     // const url = this.getClient().baseURL + `/invites/${this.type}/${this.id}/accept`;
     const channel_id = this.id;
 
-    const url = this.getClient().baseURL + `/uss/v1/token_gate/join_channel/${this.type}`;
+    const url = this.getClient().ussBaseURL + `/uss/v1/token_gate/join_channel/${this.type}`;
     return this.getClient().post<APIResponse>(url, {}, { channel_id, action });
   }
 
@@ -1909,6 +1909,31 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           if (this.state.isUpToDate || isThreadMessage) {
             channelState.addMessageSorted(event.message, ownMessage);
           }
+
+          // E2EE: decrypt incoming MLS application message (skip own — MLS cannot decrypt self-sent messages)
+          const mlsMgr = this.getClient().mlsManager;
+          if (
+            !ownMessage &&
+            mlsMgr?.initialized &&
+            event.message.content_type === 'mls' &&
+            event.message.mls_ciphertext &&
+            this.cid
+          ) {
+            mlsMgr
+              .processE2eeMessage(this.cid, event.message as any)
+              .then((result: { text: string } | null) => {
+                if (result?.text) {
+                  this.getClient().dispatchEvent({
+                    type: 'e2ee.message_decrypted' as any,
+                    message: { id: event.message!.id, text: result.text },
+                    cid: this.cid,
+                  } as any);
+                }
+              })
+              .catch((err: unknown) => {
+                console.error('[E2EE] Failed to decrypt message:', this.cid, err);
+              });
+          }
           // if (event.message.pinned) {
           //   channelState.addPinnedMessage(event.message);
           // }
@@ -2059,6 +2084,23 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             hidden: event.channel?.hidden ?? channel.data?.hidden,
             own_capabilities: event.channel?.own_capabilities ?? channel.data?.own_capabilities,
           };
+
+          // MLS: detect when E2EE is enabled on channel → sync to join group
+          const mlsMgr = this.getClient().mlsManager;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const channelData = event.channel as any;
+          if (mlsMgr?.initialized && channelData?.mls_enabled && channelData?.mls_enabled_at) {
+            const cid = this.cid;
+            if (cid) {
+              mlsMgr.syncNewChannel(
+                this.type,
+                this.id,
+                cid,
+              ).catch((err: unknown) => {
+                console.error('[MLS Event] Failed to sync after channel.updated:', cid, err);
+              });
+            }
+          }
         }
         break;
       // case 'poll.updated':

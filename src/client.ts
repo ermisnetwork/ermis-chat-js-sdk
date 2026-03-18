@@ -225,10 +225,14 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   persistUserOnConnectionFailure?: boolean;
   axiosInstance: AxiosInstance;
   baseURL?: string;
+  /** Separate base URL for USS (user service) microservice */
+  ussBaseURL?: string;
   browser: boolean;
   cleaningIntervalRef?: NodeJS.Timeout;
   clientID?: string;
   configs: Configs<ErmisChatGenerics>;
+  /** Device ID for MLS client session — set before connectUser() */
+  deviceId?: string;
   key: string;
   projectId: string;
   listeners: Record<string, Array<(event: Event<ErmisChatGenerics>) => void>>;
@@ -262,6 +266,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   insightMetrics: InsightMetrics;
   defaultWSTimeoutWithFallback: number;
   defaultWSTimeout: number;
+  /** MLS Manager instance — set by MlsManager.initialize() for E2EE event handling */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mlsManager?: any;
 
   private eventSource: EventSourcePolyfill | null = null;
 
@@ -473,7 +480,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     return DevToken(userID);
   }
   async refreshNewToken(refresh_token: string) {
-    return await this.post<APIResponse>(this.baseURL + '/uss/v1/refresh_token', { refresh_token });
+    return await this.post<APIResponse>(this.ussBaseURL + '/uss/v1/refresh_token', { refresh_token });
   }
   getAuthType() {
     return this.anonymous ? 'anonymous' : 'jwt';
@@ -481,6 +488,9 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
   setBaseURL(baseURL: string) {
     this.baseURL = baseURL;
+    // USS is a separate microservice — hardcode for now
+    this.ussBaseURL = 'https://user.xoithit.lol';
+    // this.ussBaseURL = 'http://localhost:5150';
     this.wsBaseURL = this.baseURL.replace('http', 'ws').replace(':3030', ':8800');
   }
 
@@ -502,7 +512,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     if (data.user.image) {
       params.avatar = data.user.image;
     }
-    const url = this.baseURL + '/uss/v1/get_token/external_auth';
+    const url = this.ussBaseURL + '/uss/v1/get_token/external_auth';
     const query = new URLSearchParams(params).toString();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -1420,6 +1430,15 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       // client.state.updateUser(event.me);
       // client.mutedChannels = event.me.channel_mutes;
       // client.mutedUsers = event.me.mutes;
+
+      // MLS: key package top-up from health.check
+      if (this.mlsManager?.initialized) {
+        const me = event.me as { key_packages_remaining?: number };
+        const remaining = me?.key_packages_remaining;
+        if (typeof remaining === 'number' && remaining < 20) {
+          this.mlsManager.ensureKeyPackages(remaining);
+        }
+      }
     }
 
     if (event.channel && event.type === 'notification.message_new') {
@@ -1479,6 +1498,59 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         c.watch().catch((err) => {
           this.logger('error', 'Failed to watch channel after member.added', { err, event });
         });
+      }
+    }
+
+
+
+    // ---- MLS: protocol (commit / welcome) ----
+    if (event.type === 'protocol' && this.mlsManager?.initialized) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const proto = event as any;
+      const typeField = proto.message?.type;
+      const cid = event.cid as string;
+
+      if (typeField === 'commit') {
+        const user = proto.message?.user as { id?: string } | undefined;
+        if (user?.id !== this.mlsManager.userId) {
+          const commitBytes = proto.message?.commit as Uint8Array;
+          if (cid && commitBytes) {
+            this.mlsManager.processCommit(cid, commitBytes).catch((err: unknown) => {
+              console.error('[MLS Event] Failed to process commit:', cid, err);
+            });
+          }
+        }
+      } else if (typeField === 'welcome') {
+        const user = proto.message?.user as { id?: string } | undefined;
+        if (user?.id !== this.mlsManager.userId) {
+          const targetUserIds = (proto.message?.target_user_ids as string[]) || [];
+          if (targetUserIds.includes(this.mlsManager.userId!)) {
+            const welcomeBytes = proto.message?.welcome as Uint8Array;
+            const ratchetTreeBytes = proto.message?.ratchet_tree as Uint8Array | undefined;
+            if (welcomeBytes) {
+              this.mlsManager.joinGroup(welcomeBytes, ratchetTreeBytes)
+                .then((group: any) => {
+                  const groupCid = group?.cid?.() as string | undefined;
+                  if (groupCid) {
+                    // Watch the channel to receive future WS events
+                    const colonIdx = groupCid.indexOf(':');
+                    if (colonIdx > 0) {
+                      const chType = groupCid.substring(0, colonIdx);
+                      const chId = groupCid.substring(colonIdx + 1);
+                      const ch = this.channel(chType, chId);
+                      ch.watch().catch((err: unknown) => {
+                        this.logger('error', '[MLS] Failed to watch channel after welcome', { err, cid: groupCid });
+                      });
+                    }
+                    console.log('[MLS Event] Joined group and watching channel:', groupCid);
+                  }
+                })
+                .catch((err: unknown) => {
+                  console.error('[MLS Event] Failed to join via welcome:', err);
+                });
+            }
+          }
+        }
       }
     }
 
@@ -1552,6 +1624,13 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       this.dispatchEvent({
         type: 'connection.recovered',
       } as Event<ErmisChatGenerics>);
+    }
+
+    // E2EE: sync missed protocol events (commits, welcomes) during offline period
+    if (this.mlsManager?.initialized) {
+      this.mlsManager.sync().catch((err: unknown) => {
+        this.logger('error', '[MLS] Failed to sync on reconnect', { err });
+      });
     }
 
     this.wsPromise = Promise.resolve();
@@ -1628,7 +1707,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       method: 'GET',
       Authorization: token,
     };
-    this.eventSource = new EventSourcePolyfill(this.baseURL + '/uss/v1/sse/subscribe', {
+    this.eventSource = new EventSourcePolyfill(this.ussBaseURL + '/uss/v1/sse/subscribe', {
       headers,
       heartbeatTimeout: 60000,
     });
@@ -1717,7 +1796,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   _sayHi() {
     const client_request_id = randomId();
     const opts = { headers: { 'x-client-request-id': client_request_id } };
-    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => {});
+    this.doAxiosRequest('get', this.baseURL + '/', null, opts).catch((e) => { });
   }
 
   /**
@@ -1745,7 +1824,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     }
     let project_id = this.projectId;
     // Return a list of users
-    const data = await this.get<UsersResponse>(this.baseURL + '/uss/v1/users', {
+    const data = await this.get<UsersResponse>(this.ussBaseURL + '/uss/v1/users', {
       project_id,
       page,
       page_size,
@@ -1759,7 +1838,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   async queryUser(user_id: string): Promise<UserResponse<ErmisChatGenerics>> {
     const project_id = this.projectId;
 
-    const userResponse = await this.get<UserResponse<ErmisChatGenerics>>(this.baseURL + '/uss/v1/users/' + user_id, {
+    const userResponse = await this.get<UserResponse<ErmisChatGenerics>>(this.ussBaseURL + '/uss/v1/users/' + user_id, {
       project_id,
     });
 
@@ -1771,7 +1850,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     let project_id = this.projectId;
 
     const usersRepsonse = await this.post<UsersResponse>(
-      this.baseURL + '/uss/v1/users/batch?page=1&page_size=10000',
+      this.ussBaseURL + '/uss/v1/users/batch?page=1&page_size=10000',
       { users, project_id },
       { page, page_size },
     );
@@ -1783,7 +1862,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   async searchUsers(page: number, page_size: number, name?: string): Promise<UsersResponse> {
     let project_id = this.projectId;
 
-    const usersResponse = await this.post<UsersResponse>(this.baseURL + '/uss/v1/users/search', undefined, {
+    const usersResponse = await this.post<UsersResponse>(this.ussBaseURL + '/uss/v1/users/search', undefined, {
       page,
       page_size,
       name,
@@ -1823,7 +1902,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   }
 
   async getChains(): Promise<ChainsResponse> {
-    let chain_response = await this.get<ChainsResponse>(this.baseURL + '/uss/v1/users/chains');
+    let chain_response = await this.get<ChainsResponse>(this.ussBaseURL + '/uss/v1/users/chains');
     this.chains = chain_response;
     return chain_response;
   }
@@ -1834,7 +1913,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
    * projects just includes updating project.
    */
   async joinChainProject(project_id: string): Promise<ChainsResponse> {
-    let chains_response = await this.post<ChainsResponse>(this.baseURL + '/uss/v1/users/join', { project_id });
+    let chains_response = await this.post<ChainsResponse>(this.ussBaseURL + '/uss/v1/users/join', { project_id });
     this.chains = chains_response;
     return chains_response;
   }
@@ -1845,7 +1924,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   async uploadFile(file: any) {
     const formData = new FormData();
     formData.append('avatar', file);
-    let response = await this.post<{ avatar: string }>(this.baseURL + '/uss/v1/users/upload', formData, {
+    let response = await this.post<{ avatar: string }>(this.ussBaseURL + '/uss/v1/users/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -1865,7 +1944,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       name,
       about_me,
     };
-    let response = await this.patch<UserResponse<ErmisChatGenerics>>(this.baseURL + '/uss/v1/users/update', body);
+    let response = await this.patch<UserResponse<ErmisChatGenerics>>(this.ussBaseURL + '/uss/v1/users/update', body);
     this.user = response;
     this._user = response;
     this.state.updateUser(response);

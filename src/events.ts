@@ -74,4 +74,6 @@ export const EVENT_MAP = {
   'channel.topic.closed': true,
   'channel.topic.reopen': true,
   'channel.topic.updated': true,
+  // MLS (E2EE) protocol event
+  'protocol': true,
 };

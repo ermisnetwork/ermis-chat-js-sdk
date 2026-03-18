@@ -10,7 +10,7 @@ import pkg from './package.json';
 import process from 'process';
 process.env.NODE_ENV = 'production';
 
-const externalPackages = ['axios', 'form-data', 'isomorphic-ws', 'base64-js', /@babel\/runtime/];
+const externalPackages = ['axios', 'form-data', 'isomorphic-ws', 'base64-js', /@babel\/runtime/, /\.\/wasm\/openmls_wasm/];
 
 const browserIgnore = {
 	name: 'browser-remapper',

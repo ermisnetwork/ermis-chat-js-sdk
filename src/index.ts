@@ -18,4 +18,7 @@ export * from './wallet_connect';
 export * from './direct_call_web';
 export * from './ermis_call_node';
 export * from './auth';
+export * from './e2ee';
+export * from './mls_storage';
+export * from './mls_manager';
 export { isOwnUser, chatCodes, logChatPromiseExecution, formatMessage } from './utils';

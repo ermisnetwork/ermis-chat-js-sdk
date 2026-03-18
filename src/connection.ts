@@ -190,6 +190,12 @@ export class StableWSConnection<ErmisChatGenerics extends ExtendableGenerics = D
     let rawURL = `${this.client.wsBaseURL}/connect?json=${qs}&api_key=${
       this.client.key
     }&authorization=${token}&stream-auth-type=${this.client.getAuthType()}&X-Stream-Client=${this.client.getUserAgent()}`;
+
+    // Append device_id if set on the client (for MLS client session registration)
+    if (this.client.deviceId) {
+      rawURL += `&device_id=${encodeURIComponent(this.client.deviceId)}`;
+    }
+
     rawURL = encodeURI(rawURL);
     return rawURL;
   };

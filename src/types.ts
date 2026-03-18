@@ -302,6 +302,12 @@ export type ChannelResponse<ErmisChatGenerics extends ExtendableGenerics = Defau
     is_pinned?: boolean;
     topics_enabled?: boolean;
     is_closed_topic?: boolean;
+    /** Whether E2EE (MLS) is enabled on this channel */
+    mls_enabled?: boolean;
+    /** Timestamp when E2EE was enabled — used for hybrid rendering (plaintext before, E2EE after) */
+    mls_enabled_at?: string;
+    /** Current MLS group epoch */
+    mls_epoch?: number;
   };
 
 export type QueryReactionsOptions = Pager;
@@ -643,6 +649,8 @@ export type MessageResponseBase<ErmisChatGenerics extends ExtendableGenerics = D
     cid?: string;
     command?: string;
     command_info?: { name?: string };
+    /** Message content type: 'standard' for plaintext, 'mls' for E2EE encrypted */
+    content_type?: 'standard' | 'mls';
     created_at?: string;
     deleted_at?: string;
     deleted_reply_count?: number;
@@ -652,6 +660,10 @@ export type MessageResponseBase<ErmisChatGenerics extends ExtendableGenerics = D
     latest_reactions?: ReactionResponse<ErmisChatGenerics>[];
     mentioned_users?: UserResponse<ErmisChatGenerics>[];
     message_text_updated_at?: string;
+    /** MLS ciphertext bytes (only present when content_type is 'mls') */
+    mls_ciphertext?: number[];
+    /** MLS epoch number */
+    mls_epoch?: number;
     moderation_details?: ModerationDetailsResponse;
     own_reactions?: ReactionResponse<ErmisChatGenerics>[] | null;
     pin_expires?: string | null;
@@ -2463,6 +2475,7 @@ export type MessageBase<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     show_in_channel?: boolean;
     silent?: boolean;
     text?: string;
+    sticker_url?: string;
     user?: UserResponse<ErmisChatGenerics> | null;
     user_id?: string;
   };
