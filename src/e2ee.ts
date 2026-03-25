@@ -37,26 +37,33 @@ export interface GetKeyPackagesResponse extends APIResponse {
   user_id: string;
 }
 
-export interface AddMembersRequest {
-  target_user_ids: string[];
-  /** TLS-serialized commit bytes from WASM `commitBundle.commit` */
-  commit: number[];
-  /** TLS-serialized welcome bytes from WASM `commitBundle.welcome` */
-  welcome: number[];
-  /** Exported ratchet tree bytes */
-  ratchet_tree: number[];
-  epoch: number;
+export interface MemberKeyPackages {
+  user_id: string;
+  key_packages: DeviceKeyPackage[];
 }
+
+export interface GetKeyPackagesByCidResponse extends APIResponse {
+  members: MemberKeyPackages[];
+}
+
+// NOTE: AddMembersRequest has been removed — add_members is now handled
+// through the standard edit_channel endpoint (POST /channels/{type}/{id})
+// with MLS fields (commit, welcome, ratchet_tree, epoch, group_info)
+// embedded alongside add_members in the request body.
 
 export interface RemoveMemberRequest {
   target_user_id: string;
   commit: number[];
   epoch: number;
+  /** TLS-serialized GroupInfo bytes — required so server stores alongside epoch advance. */
+  group_info: number[];
 }
 
 export interface KeyRotationRequest {
   commit: number[];
   epoch: number;
+  /** TLS-serialized GroupInfo bytes — required so server stores alongside epoch advance. */
+  group_info: number[];
 }
 
 export interface EnableE2eeRequest {
@@ -67,10 +74,42 @@ export interface EnableE2eeRequest {
   /** Exported ratchet tree bytes */
   ratchet_tree: number[];
   epoch: number;
+  /**
+   * TLS-serialized GroupInfo bytes — required so external join is possible
+   * from the very first epoch without a separate upload.
+   */
+  group_info: number[];
 }
 
 export interface MlsOperationResponse extends APIResponse {
   status: string;
+}
+
+// GroupInfo & External Join types
+
+export interface UploadGroupInfoRequest {
+  /** TLS-serialized GroupInfo bytes from WASM export_group_info */
+  group_info: number[];
+  epoch: number;
+}
+
+export interface GetGroupInfoResponse extends APIResponse {
+  group_info: number[];
+  epoch: number;
+}
+
+export interface ExternalJoinRequest {
+  /** External commit bytes from WASM Group.join_external */
+  commit: number[];
+  epoch: number;
+  /**
+   * GroupInfo bytes from joiner — optional because export_group_info() is
+   * only valid AFTER merge_pending_commit(). The joiner uploads GroupInfo
+   * via a separate POST /group_info call after merging.
+   */
+  group_info?: number[];
+  project_id?: string;
+  members?: string[];
 }
 
 export interface SendE2eeMessageRequest {
@@ -152,6 +191,42 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     return await this._get(this.baseURL + `/v1/e2ee/key_packages/${targetUserId}`);
   }
 
+  /**
+   * Consume one KeyPackage per device for channel members.
+   * Always excludes the sender (caller). Optionally filter by specific user IDs.
+   *
+   * @param channelType - e.g. "messaging"
+   * @param channelId - channel ID
+   * @param targetUserIds - optional: only fetch KPs for these users (for add_members).
+   *                        If omitted, returns KPs for ALL members except sender (for enable E2EE).
+   */
+  async getKeyPackagesByCid(
+    channelType: string,
+    channelId: string,
+    targetUserIds?: string[],
+  ): Promise<GetKeyPackagesByCidResponse> {
+    return await this._post(
+      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/key_packages`,
+      { target_user_ids: targetUserIds },
+    );
+  }
+
+  /**
+   * Fetch and consume one KeyPackage per device for a list of user IDs.
+   * Does NOT require a channel to exist — use this when creating a new E2EE channel.
+   * Sender is auto-excluded server-side (also skipped if listed explicitly).
+   *
+   * @param userIds - List of user IDs to fetch KPs for (sender will be excluded server-side)
+   */
+  async getKeyPackagesByUserIds(
+    userIds: string[],
+  ): Promise<GetKeyPackagesByCidResponse> {
+    return await this._post(
+      this.baseURL + '/v1/e2ee/key_packages/batch',
+      { user_ids: userIds },
+    );
+  }
+
   // ---- Enable E2EE ----
 
   /** Upgrade a standard channel to E2EE. Admin or channel Owner only. All members must have accepted their invites. */
@@ -166,19 +241,9 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     );
   }
 
-  // ---- Group Member Operations ----
-
-  /** Add members: send commit + welcome (Direct Commit pattern). */
-  async addMembers(
-    channelType: string,
-    channelId: string,
-    data: AddMembersRequest,
-  ): Promise<MlsOperationResponse> {
-    return await this._post(
-      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/add_members`,
-      data,
-    );
-  }
+  // NOTE: addMembers has been removed — add_members is now handled through
+  // the standard edit_channel endpoint (POST /channels/{type}/{id}).
+  // See MlsManager.addMembers() in mls_manager.ts for the updated flow.
 
   /** Remove a member: send commit (Direct Commit pattern). */
   async removeMember(
@@ -220,13 +285,13 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
   /**
    * Per-channel sync: fetch protocol + application events for a single channel.
-   * @param since ISO 8601 timestamp
+   * @param since Millisecond timestamp (ms since epoch)
    * @param limit Max events to return (default 100, server caps at 200)
    */
   async syncChannel(
     channelType: string,
     channelId: string,
-    since: string,
+    since: number,
     limit: number = 100,
   ): Promise<ChannelSyncResult> {
     return await this._get(
@@ -237,14 +302,61 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
   /**
    * Unified sync: fetch all protocol + application events across multiple E2EE channels.
-   * @param cursors Map of CID → last sync timestamp (ISO 8601)
+   * @param cursors Map of CID → last sync timestamp (milliseconds since epoch)
    * @param limit Max events per channel (default 100, server caps at 200)
    */
   async syncAll(
-    cursors: Record<string, string>,
+    cursors: Record<string, number>,
     limit: number = 100,
   ): Promise<UnifiedSyncResponse> {
     return await this._post(this.baseURL + '/v1/e2ee/sync', { cursors, limit });
+  }
+
+  // ============================================================
+  // GroupInfo & External Join
+  // ============================================================
+
+  /**
+   * Upload GroupInfo for a channel (UPSERT — overwrites old)
+   * Called after every successful commit to enable External Join
+   */
+  async uploadGroupInfo(
+    channelType: string,
+    channelId: string,
+    data: UploadGroupInfoRequest,
+  ): Promise<MlsOperationResponse> {
+    return await this._post(
+      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/group_info`,
+      data,
+    );
+  }
+
+  /**
+   * Get GroupInfo for a channel (for External Join)
+   * Multi-device: must be member. Public channel: anyone.
+   */
+  async getGroupInfo(
+    channelType: string,
+    channelId: string,
+  ): Promise<GetGroupInfoResponse> {
+    return await this._get(
+      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/group_info`,
+    );
+  }
+
+  /**
+   * Submit external join commit to server
+   * Multi-device: only broadcast commit. Public channel: insert member + system msg + commit.
+   */
+  async externalJoin(
+    channelType: string,
+    channelId: string,
+    data: ExternalJoinRequest,
+  ): Promise<MlsOperationResponse> {
+    return await this._post(
+      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/external_join`,
+      data,
+    );
   }
 }
 
@@ -253,7 +365,7 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 // ============================================================
 
 /** Protocol event types */
-export type ProtocolType = 'commit' | 'welcome' | 'proposal';
+export type ProtocolType = 'commit' | 'welcome' | 'proposal' | 'external_commit';
 
 /** Protocol message (commit, welcome, or proposal) */
 export interface ProtocolMessage {
@@ -269,8 +381,28 @@ export interface ProtocolMessage {
 
 /** A single item in a sync response — either a protocol event or an app message */
 export type E2eeSyncEvent =
-  | { type: 'message'; [key: string]: unknown }
-  | { type: 'protocol'; epoch: number; user: { id: string }; type_field: ProtocolType; commit?: number[]; welcome?: number[]; ratchet_tree?: number[]; proposal?: number[]; target_user_ids?: string[] };
+  | {
+      type: 'application';
+      /** Full Message object — `created_at` is at `data.created_at` */
+      data: { id: string; created_at: string; content_type: string; mls_ciphertext?: number[]; mls_epoch?: number; [key: string]: unknown };
+    }
+  | {
+      type: 'protocol';
+      /** MLS protocol payload — `created_at` is at `data.created_at` (consistent with application variant) */
+      data: {
+        epoch: number;
+        user: { id: string; [key: string]: unknown };
+        /** `commit` | `welcome` | `proposal` | `external_commit` */
+        type: ProtocolType;
+        commit?: number[];
+        welcome?: number[];
+        ratchet_tree?: number[];
+        proposal?: number[];
+        target_user_ids?: string[];
+        /** Timestamp when this event was stored — same location as Application.data.created_at */
+        created_at: string;
+      };
+    };
 
 /** Per-channel sync result (used by both syncChannel and syncAll) */
 export interface ChannelSyncResult {

@@ -1190,6 +1190,22 @@ export class Group {
         return Group.__wrap(ret[0]);
     }
     /**
+     * Persist the group's current state to the Provider's storage.
+     *
+     * MUST be called after processing application messages (decrypt) to save
+     * the updated ratchet/secret tree state. Without this, a Provider restore
+     * (e.g., on page reload) will load stale ratchet state, causing
+     * SecretReuseError for messages that were already decrypted.
+     * @param {Provider} provider
+     */
+    save_state(provider) {
+        _assertClass(provider, Provider);
+        const ret = wasm.group_save_state(this.__wbg_ptr, provider.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Create a new group (legacy API, uses group_id string directly)
      * @param {Provider} provider
      * @param {Identity} founder

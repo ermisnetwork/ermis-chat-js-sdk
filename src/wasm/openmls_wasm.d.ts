@@ -1,16 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * Initialize the WASM module
- *
- * Call this once at startup to set up panic hooks for better error messages.
- */
-export function init(): void;
-/**
- * Test function to verify the module is working
- */
-export function greet(): void;
-/**
  * Validate raw key package bytes without constructing a KeyPackage object.
  *
  * Performs full validation: TLS deserialization, signature verification,
@@ -29,6 +19,16 @@ export function greet(): void;
  * ```
  */
 export function validate_key_package_bytes(bytes: Uint8Array): boolean;
+/**
+ * Initialize the WASM module
+ *
+ * Call this once at startup to set up panic hooks for better error messages.
+ */
+export function init(): void;
+/**
+ * Test function to verify the module is working
+ */
+export function greet(): void;
 /**
  * Type of processed message
  */
@@ -385,6 +385,26 @@ export class Group {
    */
   static create_with_cid(provider: Provider, founder: Identity, cid: string): Group;
   /**
+   * Load a group from the Provider's storage by CID
+   *
+   * After restoring a Provider from bytes (IndexedDB), call this to reopen
+   * a group that was previously created or joined.
+   *
+   * # Arguments
+   * * `provider` - Crypto provider (restored from bytes)
+   * * `cid` - Channel ID (e.g., "team:channel_abc123")
+   */
+  static load(provider: Provider, cid: string): Group;
+  /**
+   * Persist the group's current state to the Provider's storage.
+   *
+   * MUST be called after processing application messages (decrypt) to save
+   * the updated ratchet/secret tree state. Without this, a Provider restore
+   * (e.g., on page reload) will load stale ratchet state, causing
+   * SecretReuseError for messages that were already decrypted.
+   */
+  save_state(provider: Provider): void;
+  /**
    * Create a new group (legacy API, uses group_id string directly)
    */
   static create_new(provider: Provider, founder: Identity, group_id: string): Group;
@@ -617,12 +637,6 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
-  readonly __wbg_provider_free: (a: number, b: number) => void;
-  readonly provider_new: () => number;
-  readonly provider_to_bytes: (a: number) => [number, number, number, number];
-  readonly provider_from_bytes: (a: number, b: number) => [number, number, number];
-  readonly greet: () => void;
-  readonly init: () => void;
   readonly __wbg_commitbundle_free: (a: number, b: number) => void;
   readonly commitbundle_commit: (a: number) => [number, number];
   readonly commitbundle_welcome: (a: number) => [number, number];
@@ -692,6 +706,8 @@ export interface InitOutput {
   readonly externaljoinresult_group: (a: number) => number;
   readonly externaljoinresult_commit: (a: number) => [number, number];
   readonly group_create_with_cid: (a: number, b: number, c: number, d: number) => [number, number, number];
+  readonly group_load: (a: number, b: number, c: number) => [number, number, number];
+  readonly group_save_state: (a: number, b: number) => [number, number];
   readonly group_create_new: (a: number, b: number, c: number, d: number) => number;
   readonly group_join_with_welcome: (a: number, b: number, c: number, d: number) => [number, number, number];
   readonly group_join: (a: number, b: number, c: number, d: number) => [number, number, number];
@@ -708,13 +724,19 @@ export interface InitOutput {
   readonly keypackage_from_bytes: (a: number, b: number) => [number, number, number];
   readonly keypackage_hash_ref: (a: number, b: number) => [number, number, number, number];
   readonly validate_key_package_bytes: (a: number, b: number) => number;
+  readonly __wbg_provider_free: (a: number, b: number) => void;
+  readonly provider_new: () => number;
+  readonly provider_to_bytes: (a: number) => [number, number, number, number];
+  readonly provider_from_bytes: (a: number, b: number) => [number, number, number];
+  readonly greet: () => void;
+  readonly init: () => void;
+  readonly __wbg_ratchettree_free: (a: number, b: number) => void;
+  readonly ratchettree_to_bytes: (a: number) => [number, number];
+  readonly ratchettree_from_bytes: (a: number, b: number) => [number, number, number];
   readonly __wbg_mlserror_free: (a: number, b: number) => void;
   readonly mlserror_new: (a: number, b: number, c: number) => number;
   readonly mlserror_code: (a: number) => number;
   readonly mlserror_message: (a: number) => [number, number];
-  readonly __wbg_ratchettree_free: (a: number, b: number) => void;
-  readonly ratchettree_to_bytes: (a: number) => [number, number];
-  readonly ratchettree_from_bytes: (a: number, b: number) => [number, number, number];
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;
   readonly __wbindgen_export_2: WebAssembly.Table;

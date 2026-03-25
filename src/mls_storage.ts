@@ -33,9 +33,13 @@ export interface E2eeStoredMessage {
   user_id: string;
   user?: { id: string; name?: string; image?: string; [key: string]: unknown };
 
-  // Decrypted content
+  // Decrypted content (MessageContent::Standard)
   text: string;
   attachments?: unknown[];
+  sticker_url?: string;
+  poll_type?: string;
+  poll_choice_counts?: Record<string, number>;
+  latest_poll_choices?: unknown[];
 
   // Thread / reply routing
   parent_id?: string;

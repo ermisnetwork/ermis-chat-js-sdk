@@ -28,9 +28,9 @@ export class ErmisAuthProvider {
   constructor(apiKey: string, options?: ErmisChatOptions) {
     const inputOptions = options || {};
     this.apiKey = apiKey;
-    // this.baseURL = options?.baseURL ? options.baseURL + '/uss/v1' : 'https://api.ermis.network/uss/v1';
+    this.baseURL = options?.baseURL ? options.baseURL + '/uss/v1' : 'https://api.ermis.network/uss/v1';
     // this.baseURL = 'https://api-trieve.ermis.network/uss/v1';
-    this.baseURL = 'https://user.xoithit.lol/uss/v1';
+    // this.baseURL = 'https://user.xoithit.lol/uss/v1';
     // this.baseURL = 'http://localhost:5150/uss/v1';
 
 

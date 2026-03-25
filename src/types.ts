@@ -345,6 +345,20 @@ export type ChannelUpdateOptions = {
   skip_push?: boolean;
 };
 
+/** MLS protocol fields required for E2EE add_members operations */
+export type E2EEAddMembersOptions = {
+  /** TLS-serialized commit bytes */
+  commit: number[];
+  /** TLS-serialized welcome bytes */
+  welcome: number[];
+  /** Exported ratchet tree bytes */
+  ratchet_tree: number[];
+  /** Pre-merge epoch */
+  epoch: number;
+  /** TLS-serialized GroupInfo bytes */
+  group_info: number[];
+};
+
 export type ChannelMemberAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
   members: ChannelMemberResponse<ErmisChatGenerics>[];
 };
@@ -811,9 +825,9 @@ export type UpdateChannelResponse<ErmisChatGenerics extends ExtendableGenerics =
 
 export type UpdateCommandResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
   command: UpdateCommandOptions<ErmisChatGenerics> &
-    CreatedAtUpdatedAt & {
-      name: CommandVariants<ErmisChatGenerics>;
-    };
+  CreatedAtUpdatedAt & {
+    name: CommandVariants<ErmisChatGenerics>;
+  };
 };
 
 export type UpdateMessageAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
@@ -1124,6 +1138,10 @@ export type ErmisChatOptions = AxiosRequestConfig & {
    * Base url to use for API
    */
   baseURL?: string;
+  /**
+   * Base url to use for USS API
+   */
+  ussBaseURL?: string;
   browser?: boolean;
   device?: BaseDeviceFields;
   enableInsights?: boolean;
@@ -1250,6 +1268,9 @@ export type Event<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics
   user?: UserResponse<ErmisChatGenerics>;
   user_id?: string;
   watcher_count?: number;
+  /** E2EE signal field — present in invite_accepted, invite_rejected, invite_messaging_skipped events.
+   * When true, client should trigger syncNewChannel() (accept) or evictMember() (reject/skip). */
+  mls_enabled?: boolean;
 };
 
 export type UserCustomEvent<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
@@ -1279,20 +1300,20 @@ export type MessageFlagsFiltersOptions = {
 export type MessageFlagsFilters = QueryFilters<
   {
     channel_cid?:
-      | RequireOnlyOne<Pick<QueryFilter<MessageFlagsFiltersOptions['channel_cid']>, '$eq' | '$in'>>
-      | PrimitiveFilter<MessageFlagsFiltersOptions['channel_cid']>;
+    | RequireOnlyOne<Pick<QueryFilter<MessageFlagsFiltersOptions['channel_cid']>, '$eq' | '$in'>>
+    | PrimitiveFilter<MessageFlagsFiltersOptions['channel_cid']>;
   } & {
     team?:
-      | RequireOnlyOne<Pick<QueryFilter<MessageFlagsFiltersOptions['team']>, '$eq' | '$in'>>
-      | PrimitiveFilter<MessageFlagsFiltersOptions['team']>;
+    | RequireOnlyOne<Pick<QueryFilter<MessageFlagsFiltersOptions['team']>, '$eq' | '$in'>>
+    | PrimitiveFilter<MessageFlagsFiltersOptions['team']>;
   } & {
     user_id?:
-      | RequireOnlyOne<Pick<QueryFilter<MessageFlagsFiltersOptions['user_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<MessageFlagsFiltersOptions['user_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<MessageFlagsFiltersOptions['user_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<MessageFlagsFiltersOptions['user_id']>;
   } & {
     [Key in keyof Omit<MessageFlagsFiltersOptions, 'channel_cid' | 'user_id' | 'is_reviewed'>]:
-      | RequireOnlyOne<QueryFilter<MessageFlagsFiltersOptions[Key]>>
-      | PrimitiveFilter<MessageFlagsFiltersOptions[Key]>;
+    | RequireOnlyOne<QueryFilter<MessageFlagsFiltersOptions[Key]>>
+    | PrimitiveFilter<MessageFlagsFiltersOptions[Key]>;
   }
 >;
 
@@ -1308,28 +1329,28 @@ export type FlagsFiltersOptions = {
 export type FlagsFilters = QueryFilters<
   {
     user_id?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['user_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagsFiltersOptions['user_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['user_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagsFiltersOptions['user_id']>;
   } & {
     message_id?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['message_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagsFiltersOptions['message_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['message_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagsFiltersOptions['message_id']>;
   } & {
     message_user_id?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['message_user_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagsFiltersOptions['message_user_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['message_user_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagsFiltersOptions['message_user_id']>;
   } & {
     channel_cid?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['channel_cid']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagsFiltersOptions['channel_cid']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['channel_cid']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagsFiltersOptions['channel_cid']>;
   } & {
     reporter_id?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['reporter_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagsFiltersOptions['reporter_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['reporter_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagsFiltersOptions['reporter_id']>;
   } & {
     team?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['team']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagsFiltersOptions['team']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagsFiltersOptions['team']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagsFiltersOptions['team']>;
   }
 >;
 
@@ -1348,36 +1369,36 @@ export type FlagReportsFiltersOptions = {
 export type FlagReportsFilters = QueryFilters<
   {
     report_id?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['report_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagReportsFiltersOptions['report_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['report_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagReportsFiltersOptions['report_id']>;
   } & {
     review_result?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['review_result']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagReportsFiltersOptions['review_result']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['review_result']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagReportsFiltersOptions['review_result']>;
   } & {
     reviewed_by?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['reviewed_by']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagReportsFiltersOptions['reviewed_by']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['reviewed_by']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagReportsFiltersOptions['reviewed_by']>;
   } & {
     user_id?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['user_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagReportsFiltersOptions['user_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['user_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagReportsFiltersOptions['user_id']>;
   } & {
     message_id?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['message_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagReportsFiltersOptions['message_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['message_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagReportsFiltersOptions['message_id']>;
   } & {
     message_user_id?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['message_user_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagReportsFiltersOptions['message_user_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['message_user_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagReportsFiltersOptions['message_user_id']>;
   } & {
     channel_cid?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['channel_cid']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagReportsFiltersOptions['channel_cid']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['channel_cid']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagReportsFiltersOptions['channel_cid']>;
   } & {
     team?:
-      | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['team']>, '$eq' | '$in'>>
-      | PrimitiveFilter<FlagReportsFiltersOptions['team']>;
+    | RequireOnlyOne<Pick<QueryFilter<FlagReportsFiltersOptions['team']>, '$eq' | '$in'>>
+    | PrimitiveFilter<FlagReportsFiltersOptions['team']>;
   } & {
     [Key in keyof Omit<
       FlagReportsFiltersOptions,
@@ -1397,53 +1418,53 @@ export type BannedUsersFilterOptions = {
 export type BannedUsersFilters = QueryFilters<
   {
     channel_cid?:
-      | RequireOnlyOne<Pick<QueryFilter<BannedUsersFilterOptions['channel_cid']>, '$eq' | '$in'>>
-      | PrimitiveFilter<BannedUsersFilterOptions['channel_cid']>;
+    | RequireOnlyOne<Pick<QueryFilter<BannedUsersFilterOptions['channel_cid']>, '$eq' | '$in'>>
+    | PrimitiveFilter<BannedUsersFilterOptions['channel_cid']>;
   } & {
     reason?:
-      | RequireOnlyOne<
-          {
-            $autocomplete?: BannedUsersFilterOptions['reason'];
-          } & QueryFilter<BannedUsersFilterOptions['reason']>
-        >
-      | PrimitiveFilter<BannedUsersFilterOptions['reason']>;
+    | RequireOnlyOne<
+      {
+        $autocomplete?: BannedUsersFilterOptions['reason'];
+      } & QueryFilter<BannedUsersFilterOptions['reason']>
+    >
+    | PrimitiveFilter<BannedUsersFilterOptions['reason']>;
   } & {
     [Key in keyof Omit<BannedUsersFilterOptions, 'channel_cid' | 'reason'>]:
-      | RequireOnlyOne<QueryFilter<BannedUsersFilterOptions[Key]>>
-      | PrimitiveFilter<BannedUsersFilterOptions[Key]>;
+    | RequireOnlyOne<QueryFilter<BannedUsersFilterOptions[Key]>>
+    | PrimitiveFilter<BannedUsersFilterOptions[Key]>;
   }
 >;
 
 export type ReactionFilters<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = QueryFilters<
   {
     user_id?:
-      | RequireOnlyOne<Pick<QueryFilter<ReactionResponse<ErmisChatGenerics>['user_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<ReactionResponse<ErmisChatGenerics>['user_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<ReactionResponse<ErmisChatGenerics>['user_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<ReactionResponse<ErmisChatGenerics>['user_id']>;
   } & {
     type?:
-      | RequireOnlyOne<Pick<QueryFilter<ReactionResponse<ErmisChatGenerics>['type']>, '$eq'>>
-      | PrimitiveFilter<ReactionResponse<ErmisChatGenerics>['type']>;
+    | RequireOnlyOne<Pick<QueryFilter<ReactionResponse<ErmisChatGenerics>['type']>, '$eq'>>
+    | PrimitiveFilter<ReactionResponse<ErmisChatGenerics>['type']>;
   } & {
     created_at?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
-      | PrimitiveFilter<PollResponse['created_at']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
+    | PrimitiveFilter<PollResponse['created_at']>;
   }
 >;
 
 export type ChannelFilters<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = QueryFilters<
   ContainsOperator<ErmisChatGenerics['channelType']> & {
     members?:
-      | RequireOnlyOne<Pick<QueryFilter<string>, '$in' | '$nin'>>
-      | RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'>>
-      | PrimitiveFilter<string[]>;
+    | RequireOnlyOne<Pick<QueryFilter<string>, '$in' | '$nin'>>
+    | RequireOnlyOne<Pick<QueryFilter<string[]>, '$eq'>>
+    | PrimitiveFilter<string[]>;
   } & {
     name?:
-      | RequireOnlyOne<
-          {
-            $autocomplete?: ChannelResponse<ErmisChatGenerics>['name'];
-          } & QueryFilter<ChannelResponse<ErmisChatGenerics>['name']>
-        >
-      | PrimitiveFilter<ChannelResponse<ErmisChatGenerics>['name']>;
+    | RequireOnlyOne<
+      {
+        $autocomplete?: ChannelResponse<ErmisChatGenerics>['name'];
+      } & QueryFilter<ChannelResponse<ErmisChatGenerics>['name']>
+    >
+    | PrimitiveFilter<ChannelResponse<ErmisChatGenerics>['name']>;
   } & {
     [Key in keyof Omit<
       ChannelResponse<{
@@ -1459,34 +1480,34 @@ export type ChannelFilters<ErmisChatGenerics extends ExtendableGenerics = Defaul
       }>,
       'name' | 'members'
     >]:
-      | RequireOnlyOne<
-          QueryFilter<
-            ChannelResponse<{
-              attachmentType: ErmisChatGenerics['attachmentType'];
-              channelType: {};
-              commandType: ErmisChatGenerics['commandType'];
-              eventType: ErmisChatGenerics['eventType'];
-              messageType: ErmisChatGenerics['messageType'];
-              pollOptionType: ErmisChatGenerics['pollOptionType'];
-              pollType: ErmisChatGenerics['pollType'];
-              reactionType: ErmisChatGenerics['reactionType'];
-              userType: ErmisChatGenerics['userType'];
-            }>[Key]
-          >
-        >
-      | PrimitiveFilter<
-          ChannelResponse<{
-            attachmentType: ErmisChatGenerics['attachmentType'];
-            channelType: {};
-            commandType: ErmisChatGenerics['commandType'];
-            eventType: ErmisChatGenerics['eventType'];
-            messageType: ErmisChatGenerics['messageType'];
-            pollOptionType: ErmisChatGenerics['pollOptionType'];
-            pollType: ErmisChatGenerics['pollType'];
-            reactionType: ErmisChatGenerics['reactionType'];
-            userType: ErmisChatGenerics['userType'];
-          }>[Key]
-        >;
+    | RequireOnlyOne<
+      QueryFilter<
+        ChannelResponse<{
+          attachmentType: ErmisChatGenerics['attachmentType'];
+          channelType: {};
+          commandType: ErmisChatGenerics['commandType'];
+          eventType: ErmisChatGenerics['eventType'];
+          messageType: ErmisChatGenerics['messageType'];
+          pollOptionType: ErmisChatGenerics['pollOptionType'];
+          pollType: ErmisChatGenerics['pollType'];
+          reactionType: ErmisChatGenerics['reactionType'];
+          userType: ErmisChatGenerics['userType'];
+        }>[Key]
+      >
+    >
+    | PrimitiveFilter<
+      ChannelResponse<{
+        attachmentType: ErmisChatGenerics['attachmentType'];
+        channelType: {};
+        commandType: ErmisChatGenerics['commandType'];
+        eventType: ErmisChatGenerics['eventType'];
+        messageType: ErmisChatGenerics['messageType'];
+        pollOptionType: ErmisChatGenerics['pollOptionType'];
+        pollType: ErmisChatGenerics['pollType'];
+        reactionType: ErmisChatGenerics['reactionType'];
+        userType: ErmisChatGenerics['userType'];
+      }>[Key]
+    >;
   } & {
     roles?: string[];
   } & {
@@ -1517,46 +1538,46 @@ export type QueryPollsFilters = QueryFilters<
     id?: RequireOnlyOne<Pick<QueryFilter<PollResponse['id']>, '$eq' | '$in'>> | PrimitiveFilter<PollResponse['id']>;
   } & {
     user_id?:
-      | RequireOnlyOne<Pick<QueryFilter<VotesFiltersOptions['user_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<VotesFiltersOptions['user_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<VotesFiltersOptions['user_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<VotesFiltersOptions['user_id']>;
   } & {
     is_closed?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['is_closed']>, '$eq'>>
-      | PrimitiveFilter<PollResponse['is_closed']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['is_closed']>, '$eq'>>
+    | PrimitiveFilter<PollResponse['is_closed']>;
   } & {
     max_votes_allowed?:
-      | RequireOnlyOne<
-          Pick<QueryFilter<PollResponse['max_votes_allowed']>, '$eq' | '$ne' | '$gt' | '$lt' | '$gte' | '$lte'>
-        >
-      | PrimitiveFilter<PollResponse['max_votes_allowed']>;
+    | RequireOnlyOne<
+      Pick<QueryFilter<PollResponse['max_votes_allowed']>, '$eq' | '$ne' | '$gt' | '$lt' | '$gte' | '$lte'>
+    >
+    | PrimitiveFilter<PollResponse['max_votes_allowed']>;
   } & {
     allow_answers?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['allow_answers']>, '$eq'>>
-      | PrimitiveFilter<PollResponse['allow_answers']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['allow_answers']>, '$eq'>>
+    | PrimitiveFilter<PollResponse['allow_answers']>;
   } & {
     allow_user_suggested_options?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['allow_user_suggested_options']>, '$eq'>>
-      | PrimitiveFilter<PollResponse['allow_user_suggested_options']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['allow_user_suggested_options']>, '$eq'>>
+    | PrimitiveFilter<PollResponse['allow_user_suggested_options']>;
   } & {
     voting_visibility?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['voting_visibility']>, '$eq'>>
-      | PrimitiveFilter<PollResponse['voting_visibility']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['voting_visibility']>, '$eq'>>
+    | PrimitiveFilter<PollResponse['voting_visibility']>;
   } & {
     created_at?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
-      | PrimitiveFilter<PollResponse['created_at']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
+    | PrimitiveFilter<PollResponse['created_at']>;
   } & {
     created_by_id?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_by_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<PollResponse['created_by_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_by_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<PollResponse['created_by_id']>;
   } & {
     updated_at?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['updated_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
-      | PrimitiveFilter<PollResponse['updated_at']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['updated_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
+    | PrimitiveFilter<PollResponse['updated_at']>;
   } & {
     name?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['name']>, '$eq' | '$in'>>
-      | PrimitiveFilter<PollResponse['name']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['name']>, '$eq' | '$in'>>
+    | PrimitiveFilter<PollResponse['name']>;
   }
 >;
 
@@ -1565,55 +1586,55 @@ export type QueryVotesFilters = QueryFilters<
     id?: RequireOnlyOne<Pick<QueryFilter<PollResponse['id']>, '$eq' | '$in'>> | PrimitiveFilter<PollResponse['id']>;
   } & {
     option_id?:
-      | RequireOnlyOne<Pick<QueryFilter<VotesFiltersOptions['option_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<VotesFiltersOptions['option_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<VotesFiltersOptions['option_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<VotesFiltersOptions['option_id']>;
   } & {
     is_answer?:
-      | RequireOnlyOne<Pick<QueryFilter<VotesFiltersOptions['is_answer']>, '$eq'>>
-      | PrimitiveFilter<VotesFiltersOptions['is_answer']>;
+    | RequireOnlyOne<Pick<QueryFilter<VotesFiltersOptions['is_answer']>, '$eq'>>
+    | PrimitiveFilter<VotesFiltersOptions['is_answer']>;
   } & {
     user_id?:
-      | RequireOnlyOne<Pick<QueryFilter<VotesFiltersOptions['user_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<VotesFiltersOptions['user_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<VotesFiltersOptions['user_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<VotesFiltersOptions['user_id']>;
   } & {
     created_at?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
-      | PrimitiveFilter<PollResponse['created_at']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
+    | PrimitiveFilter<PollResponse['created_at']>;
   } & {
     created_by_id?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_by_id']>, '$eq' | '$in'>>
-      | PrimitiveFilter<PollResponse['created_by_id']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['created_by_id']>, '$eq' | '$in'>>
+    | PrimitiveFilter<PollResponse['created_by_id']>;
   } & {
     updated_at?:
-      | RequireOnlyOne<Pick<QueryFilter<PollResponse['updated_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
-      | PrimitiveFilter<PollResponse['updated_at']>;
+    | RequireOnlyOne<Pick<QueryFilter<PollResponse['updated_at']>, '$eq' | '$gt' | '$lt' | '$gte' | '$lte'>>
+    | PrimitiveFilter<PollResponse['updated_at']>;
   }
 >;
 
 export type ContainsOperator<CustomType = {}> = {
   [Key in keyof CustomType]?: CustomType[Key] extends (infer ContainType)[]
-    ?
-        | RequireOnlyOne<
-            {
-              $contains?: ContainType extends object
-                ? PrimitiveFilter<RequireAtLeastOne<ContainType>>
-                : PrimitiveFilter<ContainType>;
-            } & QueryFilter<PrimitiveFilter<ContainType>[]>
-          >
-        | PrimitiveFilter<PrimitiveFilter<ContainType>[]>
-    : RequireOnlyOne<QueryFilter<CustomType[Key]>> | PrimitiveFilter<CustomType[Key]>;
+  ?
+  | RequireOnlyOne<
+    {
+      $contains?: ContainType extends object
+      ? PrimitiveFilter<RequireAtLeastOne<ContainType>>
+      : PrimitiveFilter<ContainType>;
+    } & QueryFilter<PrimitiveFilter<ContainType>[]>
+  >
+  | PrimitiveFilter<PrimitiveFilter<ContainType>[]>
+  : RequireOnlyOne<QueryFilter<CustomType[Key]>> | PrimitiveFilter<CustomType[Key]>;
 };
 
 export type MessageFilters<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = QueryFilters<
   ContainsOperator<ErmisChatGenerics['messageType']> & {
     text?:
-      | RequireOnlyOne<
-          {
-            $autocomplete?: MessageResponse<ErmisChatGenerics>['text'];
-            $q?: MessageResponse<ErmisChatGenerics>['text'];
-          } & QueryFilter<MessageResponse<ErmisChatGenerics>['text']>
-        >
-      | PrimitiveFilter<MessageResponse<ErmisChatGenerics>['text']>;
+    | RequireOnlyOne<
+      {
+        $autocomplete?: MessageResponse<ErmisChatGenerics>['text'];
+        $q?: MessageResponse<ErmisChatGenerics>['text'];
+      } & QueryFilter<MessageResponse<ErmisChatGenerics>['text']>
+    >
+    | PrimitiveFilter<MessageResponse<ErmisChatGenerics>['text']>;
   } & {
     [Key in keyof Omit<
       MessageResponse<{
@@ -1629,34 +1650,34 @@ export type MessageFilters<ErmisChatGenerics extends ExtendableGenerics = Defaul
       }>,
       'text'
     >]?:
-      | RequireOnlyOne<
-          QueryFilter<
-            MessageResponse<{
-              attachmentType: ErmisChatGenerics['attachmentType'];
-              channelType: ErmisChatGenerics['channelType'];
-              commandType: ErmisChatGenerics['commandType'];
-              eventType: ErmisChatGenerics['eventType'];
-              messageType: {};
-              pollOptionType: ErmisChatGenerics['pollOptionType'];
-              pollType: ErmisChatGenerics['pollType'];
-              reactionType: ErmisChatGenerics['reactionType'];
-              userType: ErmisChatGenerics['userType'];
-            }>[Key]
-          >
-        >
-      | PrimitiveFilter<
-          MessageResponse<{
-            attachmentType: ErmisChatGenerics['attachmentType'];
-            channelType: ErmisChatGenerics['channelType'];
-            commandType: ErmisChatGenerics['commandType'];
-            eventType: ErmisChatGenerics['eventType'];
-            messageType: {};
-            pollOptionType: ErmisChatGenerics['pollOptionType'];
-            pollType: ErmisChatGenerics['pollType'];
-            reactionType: ErmisChatGenerics['reactionType'];
-            userType: ErmisChatGenerics['userType'];
-          }>[Key]
-        >;
+    | RequireOnlyOne<
+      QueryFilter<
+        MessageResponse<{
+          attachmentType: ErmisChatGenerics['attachmentType'];
+          channelType: ErmisChatGenerics['channelType'];
+          commandType: ErmisChatGenerics['commandType'];
+          eventType: ErmisChatGenerics['eventType'];
+          messageType: {};
+          pollOptionType: ErmisChatGenerics['pollOptionType'];
+          pollType: ErmisChatGenerics['pollType'];
+          reactionType: ErmisChatGenerics['reactionType'];
+          userType: ErmisChatGenerics['userType'];
+        }>[Key]
+      >
+    >
+    | PrimitiveFilter<
+      MessageResponse<{
+        attachmentType: ErmisChatGenerics['attachmentType'];
+        channelType: ErmisChatGenerics['channelType'];
+        commandType: ErmisChatGenerics['commandType'];
+        eventType: ErmisChatGenerics['eventType'];
+        messageType: {};
+        pollOptionType: ErmisChatGenerics['pollOptionType'];
+        pollType: ErmisChatGenerics['pollType'];
+        reactionType: ErmisChatGenerics['reactionType'];
+        userType: ErmisChatGenerics['userType'];
+      }>[Key]
+    >;
   }
 >;
 
@@ -1664,23 +1685,23 @@ export type PrimitiveFilter<ObjectType> = ObjectType | null;
 
 export type QueryFilter<ObjectType = string> = NonNullable<ObjectType> extends string | number | boolean
   ? {
-      $eq?: PrimitiveFilter<ObjectType>;
-      $exists?: boolean;
-      $gt?: PrimitiveFilter<ObjectType>;
-      $gte?: PrimitiveFilter<ObjectType>;
-      $in?: PrimitiveFilter<ObjectType>[];
-      $lt?: PrimitiveFilter<ObjectType>;
-      $lte?: PrimitiveFilter<ObjectType>;
-      $ne?: PrimitiveFilter<ObjectType>;
-      $nin?: PrimitiveFilter<ObjectType>[];
-    }
+    $eq?: PrimitiveFilter<ObjectType>;
+    $exists?: boolean;
+    $gt?: PrimitiveFilter<ObjectType>;
+    $gte?: PrimitiveFilter<ObjectType>;
+    $in?: PrimitiveFilter<ObjectType>[];
+    $lt?: PrimitiveFilter<ObjectType>;
+    $lte?: PrimitiveFilter<ObjectType>;
+    $ne?: PrimitiveFilter<ObjectType>;
+    $nin?: PrimitiveFilter<ObjectType>[];
+  }
   : {
-      $eq?: PrimitiveFilter<ObjectType>;
-      $exists?: boolean;
-      $in?: PrimitiveFilter<ObjectType>[];
-      $ne?: PrimitiveFilter<ObjectType>;
-      $nin?: PrimitiveFilter<ObjectType>[];
-    };
+    $eq?: PrimitiveFilter<ObjectType>;
+    $exists?: boolean;
+    $in?: PrimitiveFilter<ObjectType>[];
+    $ne?: PrimitiveFilter<ObjectType>;
+    $nin?: PrimitiveFilter<ObjectType>[];
+  };
 
 export type QueryFilters<Operators = {}> = {
   [Key in keyof Operators]?: Operators[Key];
@@ -1695,31 +1716,31 @@ export type QueryLogicalOperators<Operators> = {
 export type UserFilters<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = QueryFilters<
   ContainsOperator<ErmisChatGenerics['userType']> & {
     id?:
-      | RequireOnlyOne<
-          { $autocomplete?: UserResponse<ErmisChatGenerics>['id'] } & QueryFilter<UserResponse<ErmisChatGenerics>['id']>
-        >
-      | PrimitiveFilter<UserResponse<ErmisChatGenerics>['id']>;
+    | RequireOnlyOne<
+      { $autocomplete?: UserResponse<ErmisChatGenerics>['id'] } & QueryFilter<UserResponse<ErmisChatGenerics>['id']>
+    >
+    | PrimitiveFilter<UserResponse<ErmisChatGenerics>['id']>;
     name?:
-      | RequireOnlyOne<
-          { $autocomplete?: UserResponse<ErmisChatGenerics>['name'] } & QueryFilter<
-            UserResponse<ErmisChatGenerics>['name']
-          >
-        >
-      | PrimitiveFilter<UserResponse<ErmisChatGenerics>['name']>;
+    | RequireOnlyOne<
+      { $autocomplete?: UserResponse<ErmisChatGenerics>['name'] } & QueryFilter<
+        UserResponse<ErmisChatGenerics>['name']
+      >
+    >
+    | PrimitiveFilter<UserResponse<ErmisChatGenerics>['name']>;
     teams?:
-      | RequireOnlyOne<{
-          $contains?: PrimitiveFilter<string>;
-          $eq?: PrimitiveFilter<UserResponse<ErmisChatGenerics>['teams']>;
-          $in?: PrimitiveFilter<UserResponse<ErmisChatGenerics>['teams']>;
-        }>
-      | PrimitiveFilter<UserResponse<ErmisChatGenerics>['teams']>;
+    | RequireOnlyOne<{
+      $contains?: PrimitiveFilter<string>;
+      $eq?: PrimitiveFilter<UserResponse<ErmisChatGenerics>['teams']>;
+      $in?: PrimitiveFilter<UserResponse<ErmisChatGenerics>['teams']>;
+    }>
+    | PrimitiveFilter<UserResponse<ErmisChatGenerics>['teams']>;
     username?:
-      | RequireOnlyOne<
-          { $autocomplete?: UserResponse<ErmisChatGenerics>['username'] } & QueryFilter<
-            UserResponse<ErmisChatGenerics>['username']
-          >
-        >
-      | PrimitiveFilter<UserResponse<ErmisChatGenerics>['username']>;
+    | RequireOnlyOne<
+      { $autocomplete?: UserResponse<ErmisChatGenerics>['username'] } & QueryFilter<
+        UserResponse<ErmisChatGenerics>['username']
+      >
+    >
+    | PrimitiveFilter<UserResponse<ErmisChatGenerics>['username']>;
   } & {
     [Key in keyof Omit<
       UserResponse<{
@@ -1735,34 +1756,34 @@ export type UserFilters<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       }>,
       'id' | 'name' | 'teams' | 'username'
     >]?:
-      | RequireOnlyOne<
-          QueryFilter<
-            UserResponse<{
-              attachmentType: ErmisChatGenerics['attachmentType'];
-              channelType: ErmisChatGenerics['channelType'];
-              commandType: ErmisChatGenerics['commandType'];
-              eventType: ErmisChatGenerics['eventType'];
-              messageType: ErmisChatGenerics['messageType'];
-              pollOptionType: ErmisChatGenerics['pollOptionType'];
-              pollType: ErmisChatGenerics['pollType'];
-              reactionType: ErmisChatGenerics['reactionType'];
-              userType: {};
-            }>[Key]
-          >
-        >
-      | PrimitiveFilter<
-          UserResponse<{
-            attachmentType: ErmisChatGenerics['attachmentType'];
-            channelType: ErmisChatGenerics['channelType'];
-            commandType: ErmisChatGenerics['commandType'];
-            eventType: ErmisChatGenerics['eventType'];
-            messageType: ErmisChatGenerics['messageType'];
-            pollOptionType: ErmisChatGenerics['pollOptionType'];
-            pollType: ErmisChatGenerics['pollType'];
-            reactionType: ErmisChatGenerics['reactionType'];
-            userType: {};
-          }>[Key]
-        >;
+    | RequireOnlyOne<
+      QueryFilter<
+        UserResponse<{
+          attachmentType: ErmisChatGenerics['attachmentType'];
+          channelType: ErmisChatGenerics['channelType'];
+          commandType: ErmisChatGenerics['commandType'];
+          eventType: ErmisChatGenerics['eventType'];
+          messageType: ErmisChatGenerics['messageType'];
+          pollOptionType: ErmisChatGenerics['pollOptionType'];
+          pollType: ErmisChatGenerics['pollType'];
+          reactionType: ErmisChatGenerics['reactionType'];
+          userType: {};
+        }>[Key]
+      >
+    >
+    | PrimitiveFilter<
+      UserResponse<{
+        attachmentType: ErmisChatGenerics['attachmentType'];
+        channelType: ErmisChatGenerics['channelType'];
+        commandType: ErmisChatGenerics['commandType'];
+        eventType: ErmisChatGenerics['eventType'];
+        messageType: ErmisChatGenerics['messageType'];
+        pollOptionType: ErmisChatGenerics['pollOptionType'];
+        pollType: ErmisChatGenerics['pollType'];
+        reactionType: ErmisChatGenerics['reactionType'];
+        userType: {};
+      }>[Key]
+    >;
   }
 >;
 
@@ -2079,15 +2100,27 @@ export type ChannelConfigFields = {
 
 export type ChannelConfigWithInfo<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
   ChannelConfigFields &
-    CreatedAtUpdatedAt & {
-      commands?: CommandResponse<ErmisChatGenerics>[];
-    };
+  CreatedAtUpdatedAt & {
+    commands?: CommandResponse<ErmisChatGenerics>[];
+  };
 
 export type ChannelData<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> =
   ErmisChatGenerics['channelType'] & {
     members?: string[];
     name?: string;
     is_pinned?: boolean;
+    /** Enable E2EE (MLS) on the channel at creation time */
+    mls_enabled?: boolean;
+    /** MLS commit bytes (Optimistic Inclusion bundle — only when mls_enabled=true) */
+    commit?: number[];
+    /** MLS welcome bytes */
+    welcome?: number[];
+    /** MLS ratchet tree bytes */
+    ratchet_tree?: number[];
+    /** MLS group_info bytes */
+    group_info?: number[];
+    /** Pre-merge epoch (server stores epoch+1) */
+    epoch?: number;
   };
 
 export type ChannelMembership<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = {
@@ -3207,7 +3240,7 @@ export type ChainsResponse<ErmisChatGenerics extends ExtendableGenerics = Defaul
 export type AttachmentResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
   attachments: Attachment<ErmisChatGenerics>[];
 };
-export class ExtendAxiosError<T = any> extends AxiosError<T> {}
+export class ExtendAxiosError<T = any> extends AxiosError<T> { }
 
 export type SignalData = {
   cid?: string;

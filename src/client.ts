@@ -336,7 +336,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     this.axiosInstance = axios.create(this.options);
 
     this.setBaseURL(this.options.baseURL || 'https://api.ermis.network');
-
+    this.setUssBaseURL(this.options.ussBaseURL);
     if (typeof process !== 'undefined' && process.env.STREAM_LOCAL_TEST_RUN) {
       this.setBaseURL('http://localhost:3030');
     }
@@ -489,11 +489,14 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
   setBaseURL(baseURL: string) {
     this.baseURL = baseURL;
     // USS is a separate microservice — hardcode for now
-    this.ussBaseURL = 'https://user.xoithit.lol';
+    // this.ussBaseURL = 'https://user.xoithit.lol';
     // this.ussBaseURL = 'http://localhost:5150';
     this.wsBaseURL = this.baseURL.replace('http', 'ws').replace(':3030', ':8800');
   }
-
+  setUssBaseURL(ussBaseURL?: string) {
+    console.log('ussBaseURL', ussBaseURL);
+    this.ussBaseURL = ussBaseURL || this.baseURL;
+  }
   _getConnectionID = () => this.wsConnection?.connectionID || this.wsFallback?.connectionID;
 
   _hasConnectionID = () => Boolean(this._getConnectionID());
@@ -1273,6 +1276,12 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     const c = this.channel(event.channel_type || '', event.channel_id);
     c.data = channel;
     c._initializeState(channelState, 'latest');
+
+    // E2EE: Do NOT call syncNewChannel here.
+    // - Creator: already has group in memory from createE2eeChannel()
+    // - Pending members: cannot access mls:{cid} events until invite is accepted
+    // - Real-time welcome: delivered via WS `protocol` event → handled in channel.ts
+    // - Offline sync after accept: handled by notification.invite_accepted hook in channel.ts
   }
 
   handleEvent = (messageEvent: WebSocket.MessageEvent) => {
@@ -1503,56 +1512,8 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
 
 
 
-    // ---- MLS: protocol (commit / welcome) ----
-    if (event.type === 'protocol' && this.mlsManager?.initialized) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const proto = event as any;
-      const typeField = proto.message?.type;
-      const cid = event.cid as string;
-
-      if (typeField === 'commit') {
-        const user = proto.message?.user as { id?: string } | undefined;
-        if (user?.id !== this.mlsManager.userId) {
-          const commitBytes = proto.message?.commit as Uint8Array;
-          if (cid && commitBytes) {
-            this.mlsManager.processCommit(cid, commitBytes).catch((err: unknown) => {
-              console.error('[MLS Event] Failed to process commit:', cid, err);
-            });
-          }
-        }
-      } else if (typeField === 'welcome') {
-        const user = proto.message?.user as { id?: string } | undefined;
-        if (user?.id !== this.mlsManager.userId) {
-          const targetUserIds = (proto.message?.target_user_ids as string[]) || [];
-          if (targetUserIds.includes(this.mlsManager.userId!)) {
-            const welcomeBytes = proto.message?.welcome as Uint8Array;
-            const ratchetTreeBytes = proto.message?.ratchet_tree as Uint8Array | undefined;
-            if (welcomeBytes) {
-              this.mlsManager.joinGroup(welcomeBytes, ratchetTreeBytes)
-                .then((group: any) => {
-                  const groupCid = group?.cid?.() as string | undefined;
-                  if (groupCid) {
-                    // Watch the channel to receive future WS events
-                    const colonIdx = groupCid.indexOf(':');
-                    if (colonIdx > 0) {
-                      const chType = groupCid.substring(0, colonIdx);
-                      const chId = groupCid.substring(colonIdx + 1);
-                      const ch = this.channel(chType, chId);
-                      ch.watch().catch((err: unknown) => {
-                        this.logger('error', '[MLS] Failed to watch channel after welcome', { err, cid: groupCid });
-                      });
-                    }
-                    console.log('[MLS Event] Joined group and watching channel:', groupCid);
-                  }
-                })
-                .catch((err: unknown) => {
-                  console.error('[MLS Event] Failed to join via welcome:', err);
-                });
-            }
-          }
-        }
-      }
-    }
+    // ---- MLS: protocol events (commit / welcome / external_commit) ----
+    // Handled at channel level in _handleChannelEvent to avoid double-processing.
 
     return postListenerCallbacks;
   }
@@ -1604,6 +1565,14 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       tags: ['connection'],
     });
 
+    // E2EE: Mark sync as started IMMEDIATELY — before queryChannels.
+    // WS is already open at this point, so message.new events may arrive.
+    // markSyncStart() prevents processE2eeMessage() from consuming ratchet
+    // secrets during the window between _connect() and sync() completion.
+    if (this.mlsManager?.initialized) {
+      this.mlsManager.markSyncStart();
+    }
+
     const cids = Object.keys(this.activeChannels);
     if (cids.length && this.recoverStateOnReconnect) {
       this.logger('info', `client:recoverState() - Start the querying of ${cids.length} channels`, {
@@ -1626,11 +1595,16 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       } as Event<ErmisChatGenerics>);
     }
 
-    // E2EE: sync missed protocol events (commits, welcomes) during offline period
+    // E2EE: sync missed protocol events (commits, welcomes) during offline period.
+    // MUST be awaited so that commits advance the epoch BEFORE WS delivers
+    // new message.new events that require decryption at the current epoch.
+    // sync() will set _syncing=false when complete, unblocking processE2eeMessage().
     if (this.mlsManager?.initialized) {
-      this.mlsManager.sync().catch((err: unknown) => {
+      try {
+        await this.mlsManager.sync();
+      } catch (err) {
         this.logger('error', '[MLS] Failed to sync on reconnect', { err });
-      });
+      }
     }
 
     this.wsPromise = Promise.resolve();
@@ -3443,6 +3417,7 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
         ...authorization,
         'stream-auth-type': this.getAuthType(),
         'X-Stream-Client': this.getUserAgent(),
+        ...(this.deviceId ? { 'X-Device-ID': this.deviceId } : {}),
         ...options.headers,
         ...(axiosRequestConfigHeaders || {}),
       },

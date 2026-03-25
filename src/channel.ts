@@ -69,6 +69,7 @@ import {
   AttachmentResponse,
   PollMessage,
   EditMessage,
+  E2EEAddMembersOptions,
 } from './types';
 import { Role } from './permissions';
 
@@ -586,6 +587,20 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     options: ChannelUpdateOptions = {},
   ) {
     return await this._update({ add_members: members, message, ...options });
+  }
+
+  /**
+   * addMembersE2ee - add members to an E2EE channel with MLS protocol fields
+   *
+   * @param {string[]} members User IDs to add
+   * @param {object} mlsFields MLS-specific protocol fields (commit, welcome, ratchet_tree, epoch, group_info)
+   * @return {Promise<UpdateChannelAPIResponse<ErmisChatGenerics>>} The server response
+   */
+  async addMembersE2ee(
+    members: string[],
+    e2eeOptions: E2EEAddMembersOptions,
+  ) {
+    return await this._update({ add_members: members, ...e2eeOptions });
   }
 
   /**
@@ -1910,10 +1925,21 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             channelState.addMessageSorted(event.message, ownMessage);
           }
 
-          // E2EE: decrypt incoming MLS application message (skip own — MLS cannot decrypt self-sent messages)
+          // E2EE: decrypt incoming MLS application message
+          // Multi-device: server includes `device_id` in Message envelope.
+          // Skip decryption ONLY if device_id matches THIS device (MLS cannot decrypt self-sent).
+          // Messages from another device of the same user WILL be decrypted (different MLS leaf node).
+          //
+          // ⚠️ CROSS-PLATFORM NOTE: Mobile (iOS/Android) MUST implement the same logic.
+          // Use `device_id` field to skip only THIS device's messages.
+          // See: bellboy/docs/e2ee_mobile_guide.md Section 3.6
           const mlsMgr = this.getClient().mlsManager;
+          const isOwnDeviceMessage = ownMessage && (
+            !mlsMgr?.deviceId ||
+            event.message.device_id === mlsMgr.deviceId
+          );
           if (
-            !ownMessage &&
+            !isOwnDeviceMessage &&
             mlsMgr?.initialized &&
             event.message.content_type === 'mls' &&
             event.message.mls_ciphertext &&
@@ -1921,13 +1947,38 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           ) {
             mlsMgr
               .processE2eeMessage(this.cid, event.message as any)
-              .then((result: { text: string } | null) => {
+              .then((result: Record<string, unknown> | null) => {
                 if (result?.text) {
+                  // Immediate decrypt success — dispatch to UI
                   this.getClient().dispatchEvent({
                     type: 'e2ee.message_decrypted' as any,
-                    message: { id: event.message!.id, text: result.text },
+                    message: {
+                      id: event.message!.id,
+                      text: result.text,
+                      user_id: result.user_id || event.user?.id,
+                    },
                     cid: this.cid,
                   } as any);
+                } else if (result === null && mlsMgr.isSyncing()) {
+                  // Skipped during sync — wait for sync to complete and retry
+                  console.log('[E2EE] Skipped during sync, will retry after sync:', event.message!.id);
+                  mlsMgr.waitForSync().then(() => {
+                    return mlsMgr.processE2eeMessage(this.cid!, event.message as any);
+                  }).then((retryResult: Record<string, unknown> | null) => {
+                    if (retryResult?.text) {
+                      this.getClient().dispatchEvent({
+                        type: 'e2ee.message_decrypted' as any,
+                        message: {
+                          id: event.message!.id,
+                          text: retryResult.text,
+                          user_id: retryResult.user_id || event.user?.id,
+                        },
+                        cid: this.cid,
+                      } as any);
+                    }
+                  }).catch((retryErr: unknown) => {
+                    console.error('[E2EE] Retry after sync failed:', this.cid, retryErr);
+                  });
                 }
               })
               .catch((err: unknown) => {
@@ -2202,7 +2253,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       //   };
       //   break;
       case 'member.joined':
-      case 'notification.invite_accepted':
         if (event.member?.user_id) {
           const existUser = users.find((user) => user.id === event.member?.user_id);
 
@@ -2229,21 +2279,74 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           this.initialized = true;
         }
         break;
+      case 'notification.invite_accepted':
+        if (event.member?.user_id) {
+          const existUserAccept = users.find((u) => u.id === event.member?.user_id);
+          if (!existUserAccept) {
+            const resUser = await this.getClient().queryUser(event.member.user_id);
+            users.push(resUser);
+          }
+
+          const userAccept = getUserInfo(event.member.user_id, users);
+          event.member.user = userAccept;
+
+          if (event.member.user_id === this.getClient().user?.id) {
+            channelState.membership = event.member;
+            this.state.membership = event.member;
+          }
+
+          channelState.members[event.member.user_id] = event.member;
+          channel.data = {
+            ...channel.data,
+            member_count: Number(channel.data?.member_count) + 1,
+            members: channel.data?.members ? [...channel.data.members, event.member] : [event.member],
+          } as ChannelAPIResponse<ErmisChatGenerics>['channel'];
+          this.offlineMode = true;
+          this.initialized = true;
+
+          // E2EE: use event.mls_enabled (server signal) — not channel.data.mls_enabled (stale cache)
+          // Accepting member pulls welcome from server via HTTP sync (Push Signal, Pull Data pattern)
+          const mlsMgrAccept = this.getClient().mlsManager;
+          if (
+            event.mls_enabled &&
+            mlsMgrAccept?.initialized &&
+            event.member.user_id === this.getClient().user?.id &&
+            this.cid
+          ) {
+            mlsMgrAccept
+              .syncNewChannel(this.type, this.id!, this.cid)
+              .catch((err: unknown) => {
+                console.error('[MLS Event] Failed to syncNewChannel after invite_accepted:', this.cid, err);
+              });
+          }
+        }
+        break;
       case 'notification.invite_rejected':
         if (event.member?.user_id) {
           delete channelState.members[event.member.user_id];
 
-          // channel.data = {
-          //   ...channel.data,
-          //   member_count: Number(channel.data?.member_count) - 1,
-          //   members: channel.data?.members?.filter((m: any) => m.user_id !== event.member?.user_id) || [],
-          // } as ChannelAPIResponse<ErmisChatGenerics>['channel'];
+          // E2EE eviction: designated evictor removes rejected member from MLS group
+          // Use event.mls_enabled (server signal) — not channel.data.mls_enabled (stale cache)
+          const mlsMgrReject = this.getClient().mlsManager;
+          if (
+            event.mls_enabled &&
+            mlsMgrReject?.initialized &&
+            this.cid && this.type && this.id &&
+            mlsMgrReject.isDesignatedEvictor(channel)
+          ) {
+            const targetUserIdReject = event.member.user_id;
+            mlsMgrReject
+              .evictMember(this.type, this.id!, this.cid, targetUserIdReject)
+              .catch((err: unknown) => {
+                console.error('[MLS Event] Failed to evictMember after invite_rejected:', this.cid, targetUserIdReject, err);
+              });
+          }
         }
         break;
       case 'notification.invite_messaging_skipped':
         if (event.member?.user_id) {
-          const user = getUserInfo(event.member.user_id, users);
-          event.member.user = user;
+          const userSkip = getUserInfo(event.member.user_id, users);
+          event.member.user = userSkip;
 
           if (event.member.user_id === this.getClient().user?.id) {
             channelState.membership = event.member;
@@ -2252,8 +2355,22 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
           channelState.members[event.member.user_id] = event.member;
 
-          // this.offlineMode = true;
-          // this.initialized = true;
+          // E2EE eviction: designated evictor removes skipped member from MLS group
+          // Use event.mls_enabled (server signal) — not channel.data.mls_enabled (stale cache)
+          const mlsMgrSkip = this.getClient().mlsManager;
+          if (
+            event.mls_enabled &&
+            mlsMgrSkip?.initialized &&
+            this.cid && this.type && this.id &&
+            mlsMgrSkip.isDesignatedEvictor(channel)
+          ) {
+            const targetUserIdSkip = event.member.user_id;
+            mlsMgrSkip
+              .evictMember(this.type, this.id!, this.cid, targetUserIdSkip)
+              .catch((err: unknown) => {
+                console.error('[MLS Event] Failed to evictMember after invite_messaging_skipped:', this.cid, targetUserIdSkip, err);
+              });
+          }
         }
         break;
       case 'member.promoted':
@@ -2337,6 +2454,81 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
         event.user = getUserInfo(event.user?.id || '', users);
         break;
+      case 'protocol': {
+        // MLS: process real-time protocol events (commit, welcome, external_commit)
+        const mlsMgrProto = this.getClient().mlsManager;
+        if (!mlsMgrProto?.initialized || !this.cid) break;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const protoMsg = (event as any).protocol_data || (event as any).message || event;
+        const protoType = protoMsg.type || protoMsg.type_field;
+        const protoUserId = protoMsg.user?.id;
+
+        switch (protoType) {
+          case 'welcome': {
+            const targetIds = (protoMsg.target_user_ids as string[]) || [];
+            if (targetIds.includes(mlsMgrProto.userId!) && !mlsMgrProto.getGroup(this.cid!)) {
+              mlsMgrProto
+                .joinGroup(protoMsg.welcome, protoMsg.ratchet_tree)
+                .then(() => {
+                  console.log('[MLS Event] Welcome processed for:', this.cid);
+                })
+                .catch((err: unknown) => {
+                  console.error('[MLS Event] Failed to process welcome:', this.cid, err);
+                });
+            }
+            break;
+          }
+          case 'commit': {
+            // Regular commits from own device already merged locally → will fail with
+            // epoch mismatch, caught gracefully in processCommit.
+            mlsMgrProto
+              .processCommit(this.cid!, protoMsg.commit, protoMsg.epoch)
+              .then(() => {
+                console.log(`[MLS Event] commit processed for:`, this.cid, 'new epoch:', mlsMgrProto.getEpoch(this.cid!));
+              })
+              .catch((err: unknown) => {
+                console.error(`[MLS Event] Failed to process commit:`, this.cid, err);
+                // Group may be behind on epochs → sync to catch up on missed commits
+                console.log('[MLS Event] Triggering sync to recover from failed commit:', this.cid);
+                mlsMgrProto.sync().catch((syncErr: unknown) => {
+                  console.error('[MLS Event] Recovery sync failed:', this.cid, syncErr);
+                });
+              });
+            break;
+          }
+          case 'external_commit': {
+            // Skip ONLY if this exact device sent the external commit (already merged locally).
+            // ⚠️ Must use device_id — NOT userId. If another device of the same user does an
+            //    external join, protoUserId === myUserId but it's a DIFFERENT device:
+            //    we must still process the commit to advance epoch, otherwise decryption fails.
+            const protoDeviceId = protoMsg.device_id;
+            const isOwnDeviceExternalCommit =
+              protoUserId === mlsMgrProto.userId &&
+              !!protoDeviceId &&
+              protoDeviceId === mlsMgrProto.deviceId;
+            if (isOwnDeviceExternalCommit) {
+              console.log('[MLS Event] Skipping own external_commit (already merged):', this.cid);
+              break;
+            }
+            mlsMgrProto
+              .processCommit(this.cid!, protoMsg.commit, protoMsg.epoch)
+              .then(() => {
+                console.log(`[MLS Event] external_commit processed for:`, this.cid, 'new epoch:', mlsMgrProto.getEpoch(this.cid!));
+              })
+              .catch((err: unknown) => {
+                console.error(`[MLS Event] Failed to process external_commit:`, this.cid, err);
+                // Group may be behind on epochs → sync to catch up on missed commits
+                console.log('[MLS Event] Triggering sync to recover from failed external_commit:', this.cid);
+                mlsMgrProto.sync().catch((syncErr: unknown) => {
+                  console.error('[MLS Event] Recovery sync failed:', this.cid, syncErr);
+                });
+              });
+            break;
+          }
+        }
+        break;
+      }
       default:
     }
 

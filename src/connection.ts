@@ -363,6 +363,14 @@ export class StableWSConnection<ErmisChatGenerics extends ExtendableGenerics = D
     }
 
     try {
+      // E2EE: Gate decryption BEFORE opening WS — any message.new events
+      // that arrive during _connect() or recoverState() must NOT consume
+      // ratchet secrets. The gate is cleared when sync() completes inside
+      // recoverState().
+      if (this.client.mlsManager?.initialized) {
+        this.client.mlsManager.markSyncStart();
+      }
+
       await this._connect();
       this._log('_reconnect() - Waiting for recoverCallBack');
       await this.client.recoverState();
