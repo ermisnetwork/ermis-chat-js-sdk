@@ -70,6 +70,7 @@ import {
   PollMessage,
   EditMessage,
   E2EEAddMembersOptions,
+  E2EERemoveMembersOptions,
 } from './types';
 import { Role } from './permissions';
 
@@ -703,6 +704,17 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
    */
   async removeMembers(members: string[], message?: Message<ErmisChatGenerics>, options: ChannelUpdateOptions = {}) {
     return await this._update({ remove_members: members, message, ...options });
+  }
+
+  /**
+   * removeMembersE2ee - remove members from an E2EE channel with MLS protocol fields
+   *
+   * @param {string[]} members User IDs to remove
+   * @param {E2EERemoveMembersOptions} e2eeOptions MLS-specific protocol fields (commit, epoch, group_info)
+   * @return {Promise<UpdateChannelAPIResponse<ErmisChatGenerics>>} The server response
+   */
+  async removeMembersE2ee(members: string[], e2eeOptions: E2EERemoveMembersOptions) {
+    return await this._update({ remove_members: members, ...e2eeOptions });
   }
 
   /**
@@ -1949,36 +1961,32 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
               .processE2eeMessage(this.cid, event.message as any)
               .then((result: Record<string, unknown> | null) => {
                 if (result?.text) {
-                  // Immediate decrypt success — dispatch to UI
+                  // Decrypt success — dispatch plaintext to UI
                   this.getClient().dispatchEvent({
                     type: 'e2ee.message_decrypted' as any,
                     message: {
                       id: event.message!.id,
                       text: result.text,
+                      e2ee_status: null,
                       user_id: result.user_id || event.user?.id,
+                      attachments: result.attachments,
+                      sticker_url: result.sticker_url,
+                      content_type: 'standard',
                     },
                     cid: this.cid,
                   } as any);
-                } else if (result === null && mlsMgr.isSyncing()) {
-                  // Skipped during sync — wait for sync to complete and retry
-                  console.log('[E2EE] Skipped during sync, will retry after sync:', event.message!.id);
-                  mlsMgr.waitForSync().then(() => {
-                    return mlsMgr.processE2eeMessage(this.cid!, event.message as any);
-                  }).then((retryResult: Record<string, unknown> | null) => {
-                    if (retryResult?.text) {
-                      this.getClient().dispatchEvent({
-                        type: 'e2ee.message_decrypted' as any,
-                        message: {
-                          id: event.message!.id,
-                          text: retryResult.text,
-                          user_id: retryResult.user_id || event.user?.id,
-                        },
-                        cid: this.cid,
-                      } as any);
-                    }
-                  }).catch((retryErr: unknown) => {
-                    console.error('[E2EE] Retry after sync failed:', this.cid, retryErr);
-                  });
+                } else {
+                  // Decrypt failed (forward secrecy, no group, sync in progress...)
+                  // Dispatch 'failed' so UI shows "Encrypted message" instead of blank
+                  this.getClient().dispatchEvent({
+                    type: 'e2ee.message_decrypted' as any,
+                    message: {
+                      id: event.message!.id,
+                      e2ee_status: 'failed',
+                      text: '',
+                    },
+                    cid: this.cid,
+                  } as any);
                 }
               })
               .catch((err: unknown) => {

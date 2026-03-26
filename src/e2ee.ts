@@ -51,13 +51,9 @@ export interface GetKeyPackagesByCidResponse extends APIResponse {
 // with MLS fields (commit, welcome, ratchet_tree, epoch, group_info)
 // embedded alongside add_members in the request body.
 
-export interface RemoveMemberRequest {
-  target_user_id: string;
-  commit: number[];
-  epoch: number;
-  /** TLS-serialized GroupInfo bytes — required so server stores alongside epoch advance. */
-  group_info: number[];
-}
+// RemoveMemberRequest — REMOVED
+// Merged into edit_channel_handler. Use channel.removeMembersE2ee() instead.
+// See MlsManager.evictMember() in mls_manager.ts for the updated flow.
 
 export interface KeyRotationRequest {
   commit: number[];
@@ -245,17 +241,10 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   // the standard edit_channel endpoint (POST /channels/{type}/{id}).
   // See MlsManager.addMembers() in mls_manager.ts for the updated flow.
 
-  /** Remove a member: send commit (Direct Commit pattern). */
-  async removeMember(
-    channelType: string,
-    channelId: string,
-    data: RemoveMemberRequest,
-  ): Promise<MlsOperationResponse> {
-    return await this._post(
-      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/remove_member`,
-      data,
-    );
-  }
+  // removeMember — REMOVED
+  // Merged into edit_channel_handler (RemoveMembers branch).
+  // Use channel.removeMembersE2ee() which calls the standard POST /channels/{type}/{id} endpoint.
+  // See MlsManager.evictMember() in mls_manager.ts for the updated flow.
 
   /** Key rotation (self update): rotate own key material for forward secrecy. */
   async keyRotation(

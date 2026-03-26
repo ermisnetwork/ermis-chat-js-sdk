@@ -359,6 +359,16 @@ export type E2EEAddMembersOptions = {
   group_info: number[];
 };
 
+/** MLS protocol fields for E2EE remove_members operations */
+export type E2EERemoveMembersOptions = {
+  /** TLS-serialized commit bytes */
+  commit: number[];
+  /** Pre-merge epoch */
+  epoch: number;
+  /** TLS-serialized GroupInfo bytes */
+  group_info: number[];
+};
+
 export type ChannelMemberAPIResponse<ErmisChatGenerics extends ExtendableGenerics = DefaultGenerics> = APIResponse & {
   members: ChannelMemberResponse<ErmisChatGenerics>[];
 };

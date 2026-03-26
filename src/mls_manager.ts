@@ -827,17 +827,12 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     // 4. Export ratchet tree for new members
     const ratchetTree = group.export_ratchet_tree();
 
-    // 5. Use group_info from the commit if it was generated (contains post-merge epoch N+1).
-    //    If missing (solo group or other reasons), fallback to manual export.
-    let exportedGIEnable = commitBundle.group_info;
-    if (!exportedGIEnable || exportedGIEnable.length === 0) {
-      exportedGIEnable = group.export_group_info(this.provider, this.identity, true);
-    }
-
+    // 5. Get group_info from commitBundle (post-commit epoch N+1 state)
+    const exportedGIEnable = commitBundle.group_info;
     if (!exportedGIEnable || exportedGIEnable.length === 0) {
       group.clear_pending_commit(this.provider);
       await this._persistProvider();
-      throw new Error('[MLS] enableE2ee: failed to export group_info — cannot proceed without it');
+      throw new Error('[MLS] enableE2ee: commitBundle.group_info is empty — cannot proceed');
     }
 
     // 6. Call enable API
@@ -920,16 +915,12 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     // 4. Export ratchet tree (needed for welcome recipients)
     const ratchetTree = group.export_ratchet_tree();
 
-    // 5. Use group_info from the commit if it was generated (contains post-merge epoch N+1).
-    //    If missing (solo group or other reasons), fallback to manual export.
-    let exportedGI = commitBundle.group_info;
-    if (!exportedGI || exportedGI.length === 0) {
-      exportedGI = group.export_group_info(this.provider, this.identity, true);
-    }
+    // 5. Get group_info from commitBundle (post-commit epoch N+1 state)
+    const exportedGI = commitBundle.group_info;
     if (!exportedGI || exportedGI.length === 0) {
       group.clear_pending_commit(this.provider);
       await this._persistProvider();
-      throw new Error('[MLS] createE2eeChannel: failed to export group_info');
+      throw new Error('[MLS] createE2eeChannel: commitBundle.group_info is empty — cannot proceed');
     }
 
     // 6. Capture pre-merge epoch
@@ -995,13 +986,12 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     // 4. Export ratchet tree BEFORE merge (need pre-merge state for welcome)
     const ratchetTree = group.export_ratchet_tree();
 
-    // 5. Export group_info explicitly — CommitBundle.group_info is Uint8Array|undefined.
-    //    group.epoch() is already N+1 in staged pending-commit state.
-    const exportedGIAdd = group.export_group_info(this.provider, this.identity, true);
+    // 5. Get group_info from commitBundle (post-commit epoch N+1 state)
+    const exportedGIAdd = commitBundle.group_info;
     if (!exportedGIAdd || exportedGIAdd.length === 0) {
       group.clear_pending_commit(this.provider);
       await this._persistProvider();
-      throw new Error('[MLS] addMembers: failed to export group_info — cannot proceed without it');
+      throw new Error('[MLS] addMembers: commitBundle.group_info is empty — cannot proceed');
     }
 
     // 6. Send to server FIRST — only merge if server accepts
@@ -1108,35 +1098,36 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
     console.log('[MLS] Evicting member:', targetUserId, 'from:', cid);
 
-    // 1. WASM: remove_members → commitBundle
+    // 1. WASM: remove_users → commitBundle (includes commit + group_info)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let commitBundle: any;
     try {
-      commitBundle = group.remove_members(this.provider, this.identity, [targetUserId]);
+      commitBundle = group.remove_users(this.provider, this.identity, [targetUserId]);
     } catch (err) {
-      console.error('[MLS] evictMember: WASM remove_members failed:', err);
+      console.error('[MLS] evictMember: WASM remove_users failed:', err);
       throw err;
     }
 
-    // 2. Export GroupInfo (epoch is pre-merge here)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let exportedGI: any;
-    try {
-      exportedGI = group.export_group_info(this.provider, this.identity, true);
-    } catch (err) {
-      console.error('[MLS] evictMember: export_group_info failed:', err);
+    // 2. Get GroupInfo from commitBundle (must be present — post-commit epoch N+1 state)
+    const groupInfoBytes = commitBundle.group_info;
+    if (!groupInfoBytes || groupInfoBytes.length === 0) {
+      console.error('[MLS] evictMember: commitBundle has no group_info');
       group.clear_pending_commit(this.provider);
       await this._persistProvider();
-      throw err;
+      throw new Error('[MLS] evictMember: commitBundle.group_info is empty — cannot proceed');
     }
 
-    // 3. Send commit to server — server advances epoch
+    // 3. Send commit to server via standard edit_channel endpoint
     try {
-      await this.e2eeClient!.removeMember(channelType, channelId, {
-        target_user_id: targetUserId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const channel = (this.client as any)?.activeChannels?.[cid];
+      if (!channel) {
+        throw new Error(`[MLS] No active channel found for cid: ${cid}`);
+      }
+      await channel.removeMembersE2ee([targetUserId], {
         commit: Array.from(commitBundle.commit),
         epoch: Number(group.epoch()),
-        group_info: Array.from(exportedGI),
+        group_info: Array.from(groupInfoBytes),
       });
     } catch (err) {
       if (isEpochStaleError(err) && !isRetry) {
@@ -1250,22 +1241,14 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     // 1. WASM: self_update → produces CommitBundle (commit + optional welcome)
     const bundle = group.self_update(this.provider, this.identity);
 
-    // 2. Export group_info explicitly — self_update CommitBundle does NOT include
-    //    group_info automatically. Must call export_group_info() on the staged group.
-    //    group.epoch() is already N+1 in staged state, so this is the correct GroupInfo.
-    let groupInfoForRequest: number[] | undefined;
-    try {
-      const exportedGI = group.export_group_info(this.provider, this.identity, true);
-      if (exportedGI && exportedGI.length > 0) {
-        groupInfoForRequest = Array.from(exportedGI);
-      }
-    } catch (giErr) {
-      console.warn('[MLS] keyRotation: failed to export group_info (will upload after merge):', giErr);
+    // 2. Get group_info from bundle (post-commit epoch N+1 state)
+    const groupInfoBytes = bundle.group_info;
+    if (!groupInfoBytes || groupInfoBytes.length === 0) {
+      group.clear_pending_commit(this.provider);
+      await this._persistProvider();
+      throw new Error('[MLS] keyRotation: bundle.group_info is empty — cannot proceed');
     }
-
-    if (!groupInfoForRequest) {
-      throw new Error('[MLS] keyRotation: group_info export failed — cannot proceed without it');
-    }
+    const groupInfoForRequest = Array.from(groupInfoBytes as Uint8Array);
 
     // 3. Send commit to server FIRST
     try {
@@ -1501,9 +1484,10 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
     // CRITICAL: If MLS sync is in progress (reconnecting from background),
     // do NOT attempt decryption here. Decrypting would consume ratchet secrets
-    // that sync needs. Let the sync waterfall handle these messages instead.
+    // that sync needs. Return null — channel.ts will dispatch 'failed' so UI
+    // shows "Encrypted message" instead of blank.
     if (this._syncing) {
-      console.log('[MLS] processE2eeMessage: sync in progress, skipping (will be handled by sync):', message.id);
+      console.log('[MLS] processE2eeMessage: sync in progress, skipping:', message.id);
       return null;
     }
 
@@ -1586,12 +1570,14 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         // but won't block future decryptions.
         return null;
       }
+
+      // Epoch mismatch or other recoverable error — log and return null.
+      // channel.ts will dispatch 'failed' → UI shows "Encrypted message".
       console.error('[MLS] Failed to decrypt message:', cid, {
         msgId: message.id,
         groupEpoch: Number(group.epoch()),
         msgEpoch: message.mls_epoch,
-        error: (err as Error).message,
-        errorFull: err,
+        error: errMsg,
       });
     }
 
@@ -1621,6 +1607,8 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       poll_type: stored.poll_type,
       poll_choice_counts: stored.poll_choice_counts,
       latest_poll_choices: stored.latest_poll_choices,
+      // E2EE status (only present during deferred decryption)
+      e2ee_status: (stored as any).e2ee_status || null,
       // Envelope metadata (routing + notifications)
       parent_id: stored.parent_id || envelope.parent_id,
       quoted_message_id: stored.quoted_message_id || envelope.quoted_message_id,
