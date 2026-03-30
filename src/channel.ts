@@ -718,6 +718,20 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   /**
+   * leaveChannelE2ee - self-leave an E2EE channel.
+   *
+   * Sends `self_remove: true` → server skips MLS commit validation.
+   * The remaining designated evictor will remove the leaver's leaf nodes
+   * upon receiving the `member.removed` event.
+   *
+   * @param {string} userId The ID of the user leaving
+   * @return {Promise<UpdateChannelAPIResponse<ErmisChatGenerics>>} The server response
+   */
+  async leaveChannelE2ee(userId: string) {
+    return await this._update({ remove_members: [userId], self_remove: true });
+  }
+
+  /**
    * demoteModerators - remove moderator role from channel members
    *
    * @param {string[]} members An array of member identifiers

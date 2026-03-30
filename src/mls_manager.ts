@@ -130,6 +130,15 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   private _syncing = false;
   private _syncPromise: Promise<void> | null = null;
 
+  /**
+   * In-memory dedup: message IDs already decrypted in this session.
+   * Prevents race condition where waterfall decrypt (sync) consumes ratchet
+   * secrets but IndexedDB write hasn't flushed before WS message.new event
+   * triggers processE2eeMessage(). Without this, processE2eeMessage would
+   * attempt re-decryption → SecretReuseError (forward secrecy).
+   */
+  private _decryptedMsgIds = new Set<string>();
+
   constructor() {
     this.storage = new IndexedDBMlsStorage();
   }
@@ -427,16 +436,20 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
             // Skip non-ChannelSyncResult entries (e.g. "duration" from APIResponse)
             if (!result || typeof result !== 'object' || !('events' in result)) continue;
 
-            const channelResult = result as { events: any[]; has_more: boolean };
+            const channelResult = result as { events: any[]; has_more: boolean; next_cursor?: number };
             if (!channelResult.events || channelResult.events.length === 0) continue;
 
             // Process events for this channel
             await this._processChannelEvents(cid, channelResult.events);
 
-            // Update cursor for next page
-            const lastEventCreatedAt = this._getEventCreatedAt(channelResult.events[channelResult.events.length - 1]);
-            if (lastEventCreatedAt) {
-              syncCursors[cid] = this._toMillis(lastEventCreatedAt);
+            // Update cursor for next page — prefer server-provided next_cursor
+            if (channelResult.next_cursor) {
+              syncCursors[cid] = channelResult.next_cursor;
+            } else {
+              const lastEventCreatedAt = this._getEventCreatedAt(channelResult.events[channelResult.events.length - 1]);
+              if (lastEventCreatedAt) {
+                syncCursors[cid] = this._toMillis(lastEventCreatedAt);
+              }
             }
 
             if (channelResult.has_more) {
@@ -569,6 +582,44 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
             quoted_message_id: msg.quoted_message_id,
             mentioned_users: msg.mentioned_users,
           });
+        }
+      } else if (eventType === 'reaction') {
+        // Reaction metadata event — update reaction state for the target message
+        const reactionData = event.data;
+        const messageId = reactionData?.message_id;
+        if (!messageId) continue;
+
+        // 1. Update in-memory channel state (if channel is active and has the message)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const activeChannel = (this.client as any)?.activeChannels?.[cid];
+        if (activeChannel?.state?.messageSets) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          activeChannel.state.messageSets.forEach((messageSet: any) => {
+            for (let i = 0; i < messageSet.messages.length; i++) {
+              if (messageSet.messages[i].id === messageId) {
+                messageSet.messages[i] = {
+                  ...messageSet.messages[i],
+                  latest_reactions: reactionData.latest_reactions ?? messageSet.messages[i].latest_reactions,
+                  reaction_counts: reactionData.reaction_counts ?? messageSet.messages[i].reaction_counts,
+                };
+                break;
+              }
+            }
+          });
+        }
+
+        // 2. Update local storage — merge reaction fields only
+        try {
+          const existingMsg = await this.storage.loadE2eeMessage(messageId);
+          if (existingMsg) {
+            await this.storage.saveE2eeMessage({
+              ...existingMsg,
+              latest_reactions: reactionData.latest_reactions ?? existingMsg.latest_reactions,
+              reaction_counts: reactionData.reaction_counts ?? existingMsg.reaction_counts,
+            });
+          }
+        } catch (err) {
+          console.warn('[MLS] Failed to update reactions in storage:', messageId, err);
         }
       }
     }
@@ -1339,6 +1390,18 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       this.identity,
       encoder.encode(payloadJson),
     );
+
+    // CRITICAL: Persist encryption ratchet state after create_message().
+    // create_message() advances the sender's secret tree generation in-memory.
+    // Without save_state(), a page reload restores the old generation → sender
+    // re-encrypts at already-consumed generations → receiver gets forward
+    // secrecy error ("message already consumed, cannot re-decrypt").
+    try {
+      group.save_state(this.provider);
+    } catch (e) {
+      console.warn('[MLS] Failed to save group state after encrypt:', e);
+    }
+
     return ciphertext;
   }
 
@@ -1483,21 +1546,54 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     if (!ciphertext) return null;
 
     // CRITICAL: If MLS sync is in progress (reconnecting from background),
-    // do NOT attempt decryption here. Decrypting would consume ratchet secrets
-    // that sync needs. Return null — channel.ts will dispatch 'failed' so UI
-    // shows "Encrypted message" instead of blank.
+    // do NOT attempt decryption — it would race with the waterfall decrypt
+    // and consume ratchet secrets out of order. Instead, WAIT for sync to
+    // finish, then check dedup: if sync already decrypted this message, return
+    // the cached result; otherwise decrypt normally (message arrived after the
+    // sync window).
     if (this._syncing) {
-      console.log('[MLS] processE2eeMessage: sync in progress, skipping:', message.id);
-      return null;
+      console.log('[MLS] processE2eeMessage: sync in progress, waiting for completion:', message.id);
+      try {
+        await this.waitForSync();
+      } catch {
+        // Sync failed — fall through to normal decrypt
+      }
+      // Re-check dedup after sync: sync may have already decrypted this message
+      if (this._decryptedMsgIds.has(message.id)) {
+        console.log('[MLS] processE2eeMessage: decrypted by sync (post-wait), returning cached:', message.id);
+        const cached = await this.storage.loadE2eeMessage(message.id);
+        if (cached) return this._buildFullMessage(cached, message);
+        return null;
+      }
+      const existing = await this.storage.loadE2eeMessage(message.id);
+      if (existing) {
+        this._decryptedMsgIds.add(message.id);
+        return this._buildFullMessage(existing, message);
+      }
+      // Message not in sync window — fall through to normal decrypt below
     }
 
     // CRITICAL: Check if already decrypted (sync waterfall may have processed
     // this message before the WS message.new event arrived). MLS forward secrecy
     // deletes ratchet keys after first decrypt — re-decrypting would fail with
     // "The requested secret was deleted to preserve forward secrecy."
+    //
+    // Two-tier dedup:
+    // 1. In-memory Set (instant, no async) — catches the race where waterfall
+    //    decrypt consumed the ratchet but IndexedDB hasn't flushed yet.
+    // 2. IndexedDB lookup — catches messages decrypted in a previous session.
+    if (this._decryptedMsgIds.has(message.id)) {
+      console.log('[MLS] processE2eeMessage: already decrypted (in-memory), skipping:', message.id);
+      const cached = await this.storage.loadE2eeMessage(message.id);
+      if (cached) return this._buildFullMessage(cached, message);
+      // IndexedDB hasn't flushed yet — return null, UI will show "Encrypted message"
+      // but the plaintext IS saved and will appear on next channel load.
+      return null;
+    }
     const existing = await this.storage.loadE2eeMessage(message.id);
     if (existing) {
-      console.log('[MLS] processE2eeMessage: already decrypted, skipping:', message.id);
+      console.log('[MLS] processE2eeMessage: already decrypted (IndexedDB), skipping:', message.id);
+      this._decryptedMsgIds.add(message.id);
       return this._buildFullMessage(existing, message);
     }
 
@@ -1519,6 +1615,11 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       // Ensure ciphertext is Uint8Array (WS may deliver as regular array)
       const ctBytes = ciphertext instanceof Uint8Array ? ciphertext : new Uint8Array(ciphertext as any);
       const { payload, messageType } = this.decryptMessage(cid, ctBytes);
+
+      // Mark as decrypted IMMEDIATELY after process_message succeeds —
+      // before any async IndexedDB writes. This is the in-memory dedup
+      // that prevents the race with waterfall decrypt.
+      this._decryptedMsgIds.add(message.id);
 
       if (messageType === 0) {
         // ApplicationMessage — save decrypted Standard content to local DB
@@ -1734,6 +1835,14 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     };
     await this.storage.saveE2eeMessage(storedMsg);
 
+    // CRITICAL: Persist Provider to IndexedDB after successful send.
+    // create_message() advanced the encryption ratchet generation in-memory
+    // and save_state() wrote it to Provider. Without this flush, a tab reload
+    // before the next _persistProvider() call would revert the generation
+    // counter → next send re-uses consumed generations → forward secrecy error
+    // on the receiver side.
+    await this._persistProvider();
+
     // Return full message for channel state + server response
     return {
       ...response,
@@ -1785,6 +1894,12 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
       try {
         const { payload, messageType } = this.decryptMessage(cid, msg.mls_ciphertext);
+
+        // Mark as decrypted IMMEDIATELY after process_message succeeds —
+        // before async IndexedDB write. This prevents the race where WS
+        // message.new arrives before saveE2eeMessage() flushes to IndexedDB.
+        this._decryptedMsgIds.add(msg.id);
+
         if (messageType === 0) {
           const decryptedMsg: E2eeStoredMessage = {
             id: msg.id,

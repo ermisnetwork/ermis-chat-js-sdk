@@ -391,12 +391,32 @@ export type E2eeSyncEvent =
         /** Timestamp when this event was stored — same location as Application.data.created_at */
         created_at: string;
       };
+    }
+  | {
+      type: 'reaction';
+      /** Reaction metadata — snapshot of current reaction state for a message */
+      data: {
+        /** "reaction.new" or "reaction.deleted" */
+        action: 'reaction.new' | 'reaction.deleted';
+        /** ID of the message that was reacted to */
+        message_id: string;
+        /** Current full list of reactions on the message (snapshot) */
+        latest_reactions?: Array<{ type: string; user_id: string; user?: { id: string; [key: string]: unknown }; message_id: string; created_at: string; updated_at: string; [key: string]: unknown }>;
+        /** Current reaction counts (snapshot) */
+        reaction_counts?: Record<string, number>;
+        /** The specific reaction that triggered this event */
+        reaction?: { type: string; user_id: string; user?: { id: string; [key: string]: unknown }; message_id: string; created_at: string; updated_at: string; [key: string]: unknown };
+        /** Timestamp for timeline sorting */
+        created_at: string;
+      };
     };
 
 /** Per-channel sync result (used by both syncChannel and syncAll) */
 export interface ChannelSyncResult {
   events: E2eeSyncEvent[];
   has_more: boolean;
+  /** Millisecond timestamp of the last event — use this for the next sync cursor */
+  next_cursor?: number;
 }
 
 /** Response from POST /v1/e2ee/sync */
