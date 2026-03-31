@@ -1207,8 +1207,9 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         }
 
         try {
-          console.log('[MLS] _drainPendingEvictions: evicting', userId, 'from', cid);
-          await this.evictMember(channelType, channelId, cid, userId);
+          // selfLeft=true: queue is only populated from SystemMessage type 12 (self-leave).
+          // Target user already left channel → use POST /commit_eviction.
+          await this.evictMember(channelType, channelId, cid, userId, true);
           // Eviction succeeded — remove this user from persisted storage
           await this._removePendingEviction(cid, userId);
         } catch (err) {
@@ -1325,22 +1326,22 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   }
 
   /**
-   * Remove a member from the MLS group (eviction after reject/skip).
-   * Uses WASM remove_members, sends commit to server, then merges.
-   * Race condition handled by server epoch CAS: only first evictor wins,
-   * second gets epoch_stale → clears + syncs (the eviction is already done).
+   * Remove a member from the MLS group.
    *
-   * @param channelType - e.g. "team"
-   * @param channelId   - channel ID
-   * @param cid         - full CID e.g. "team:xxx:yyy"
+   * @param channelType  - e.g. "team"
+   * @param channelId    - channel ID
+   * @param cid          - full CID e.g. "team:xxx:yyy"
    * @param targetUserId - user to evict
-   * @param isRetry     - internal: true on second attempt after epoch_stale
+   * @param selfLeft     - true  → target already self-left (use POST /commit_eviction; no DB check)
+   *                       false → admin kick (use edit_channel; removes from channel DB + MLS)
+   * @param isRetry      - internal: true on second attempt after epoch_stale
    */
   async evictMember(
     channelType: string,
     channelId: string,
     cid: string,
     targetUserId: string,
+    selfLeft = false,
     isRetry = false,
   ): Promise<void> {
     if (!this.initialized) throw new Error('[MLS] Not initialized');
@@ -1351,7 +1352,7 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       return;
     }
 
-    console.log('[MLS] Evicting member:', targetUserId, 'from:', cid);
+    console.log('[MLS] Evicting member:', targetUserId, 'from:', cid, '(selfLeft:', selfLeft, ')');
 
     // 1. WASM: remove_users → commitBundle (includes commit + group_info)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1372,18 +1373,32 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       throw new Error('[MLS] evictMember: commitBundle.group_info is empty — cannot proceed');
     }
 
-    // 3. Send commit to server via standard edit_channel endpoint
+    // 3. Send to correct server endpoint based on whether target already left
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const channel = (this.client as any)?.activeChannels?.[cid];
-      if (!channel) {
-        throw new Error(`[MLS] No active channel found for cid: ${cid}`);
+      if (selfLeft) {
+        // Target already removed from channel DB (self_remove=true).
+        // Use dedicated MLS-only endpoint — bypasses membership check.
+        if (!this.e2eeClient) throw new Error('[MLS] e2eeClient not initialized');
+        await this.e2eeClient.commitEviction(channelType, channelId, {
+          target_user_id: targetUserId,
+          commit: Array.from(commitBundle.commit),
+          epoch: Number(group.epoch()),
+          group_info: Array.from(groupInfoBytes),
+        });
+      } else {
+        // Admin kick — target still in channel.
+        // edit_channel removes from channel DB AND processes MLS commit atomically.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const channel = (this.client as any)?.activeChannels?.[cid];
+        if (!channel) {
+          throw new Error(`[MLS] No active channel found for cid: ${cid}`);
+        }
+        await channel.removeMembersE2ee([targetUserId], {
+          commit: Array.from(commitBundle.commit),
+          epoch: Number(group.epoch()),
+          group_info: Array.from(groupInfoBytes),
+        });
       }
-      await channel.removeMembersE2ee([targetUserId], {
-        commit: Array.from(commitBundle.commit),
-        epoch: Number(group.epoch()),
-        group_info: Array.from(groupInfoBytes),
-      });
     } catch (err) {
       if (isEpochStaleError(err) && !isRetry) {
         // Another admin already evicted → clear + sync + done (no retry needed, member already out)

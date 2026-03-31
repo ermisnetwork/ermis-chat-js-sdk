@@ -108,6 +108,27 @@ export interface ExternalJoinRequest {
   members?: string[];
 }
 
+/**
+ * CommitEvictionRequest — MLS-only commit for evicting a user who already self-left.
+ * Used by `POST /v1/e2ee/channels/{type}/{id}/commit_eviction`.
+ * Does NOT touch channel membership (already handled by self_remove in edit_channel).
+ */
+export interface CommitEvictionRequest {
+  /** The user_id that already self-left (for logging only — no membership check on server) */
+  target_user_id: string;
+  /** MLS commit bytes from WASM group.remove_users([target_user_id]) */
+  commit: number[];
+  /** Pre-merge epoch (must match DB epoch — CAS check) */
+  epoch: number;
+  /** Post-commit GroupInfo bytes (required) */
+  group_info: number[];
+}
+
+export interface CommitEvictionResponse extends APIResponse {
+  status: string;
+  epoch: number;
+}
+
 export interface SendE2eeMessageRequest {
   message: {
     id: string;
@@ -347,6 +368,26 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       data,
     );
   }
+
+  /**
+   * Commit the MLS eviction of a user who already self-left the channel.
+   *
+   * Called by the designated evictor (owner/moder) after receiving `member.removed`
+   * triggered by a `self_remove=true` leave. The target user is already removed from
+   * channel DB — this endpoint only processes the MLS commit (no membership check).
+   *
+   * `POST /v1/e2ee/channels/{type}/{id}/commit_eviction`
+   */
+  async commitEviction(
+    channelType: string,
+    channelId: string,
+    data: CommitEvictionRequest,
+  ): Promise<CommitEvictionResponse> {
+    return await this._post(
+      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/commit_eviction`,
+      data,
+    );
+  }
 }
 
 // ============================================================
@@ -359,7 +400,7 @@ export type ProtocolType = 'commit' | 'welcome' | 'proposal' | 'external_commit'
 /** Protocol message (commit, welcome, or proposal) */
 export interface ProtocolMessage {
   epoch: number;
-  user: { id: string; [key: string]: unknown };
+  user: { id: string;[key: string]: unknown };
   type: ProtocolType;
   commit?: number[];
   welcome?: number[];
@@ -371,45 +412,45 @@ export interface ProtocolMessage {
 /** A single item in a sync response — either a protocol event or an app message */
 export type E2eeSyncEvent =
   | {
-      type: 'application';
-      /** Full Message object — `created_at` is at `data.created_at` */
-      data: { id: string; created_at: string; content_type: string; mls_ciphertext?: number[]; mls_epoch?: number; [key: string]: unknown };
-    }
+    type: 'application';
+    /** Full Message object — `created_at` is at `data.created_at` */
+    data: { id: string; created_at: string; content_type: string; mls_ciphertext?: number[]; mls_epoch?: number;[key: string]: unknown };
+  }
   | {
-      type: 'protocol';
-      /** MLS protocol payload — `created_at` is at `data.created_at` (consistent with application variant) */
-      data: {
-        epoch: number;
-        user: { id: string; [key: string]: unknown };
-        /** `commit` | `welcome` | `proposal` | `external_commit` */
-        type: ProtocolType;
-        commit?: number[];
-        welcome?: number[];
-        ratchet_tree?: number[];
-        proposal?: number[];
-        target_user_ids?: string[];
-        /** Timestamp when this event was stored — same location as Application.data.created_at */
-        created_at: string;
-      };
-    }
-  | {
-      type: 'reaction';
-      /** Reaction metadata — snapshot of current reaction state for a message */
-      data: {
-        /** "reaction.new" or "reaction.deleted" */
-        action: 'reaction.new' | 'reaction.deleted';
-        /** ID of the message that was reacted to */
-        message_id: string;
-        /** Current full list of reactions on the message (snapshot) */
-        latest_reactions?: Array<{ type: string; user_id: string; user?: { id: string; [key: string]: unknown }; message_id: string; created_at: string; updated_at: string; [key: string]: unknown }>;
-        /** Current reaction counts (snapshot) */
-        reaction_counts?: Record<string, number>;
-        /** The specific reaction that triggered this event */
-        reaction?: { type: string; user_id: string; user?: { id: string; [key: string]: unknown }; message_id: string; created_at: string; updated_at: string; [key: string]: unknown };
-        /** Timestamp for timeline sorting */
-        created_at: string;
-      };
+    type: 'protocol';
+    /** MLS protocol payload — `created_at` is at `data.created_at` (consistent with application variant) */
+    data: {
+      epoch: number;
+      user: { id: string;[key: string]: unknown };
+      /** `commit` | `welcome` | `proposal` | `external_commit` */
+      type: ProtocolType;
+      commit?: number[];
+      welcome?: number[];
+      ratchet_tree?: number[];
+      proposal?: number[];
+      target_user_ids?: string[];
+      /** Timestamp when this event was stored — same location as Application.data.created_at */
+      created_at: string;
     };
+  }
+  | {
+    type: 'reaction';
+    /** Reaction metadata — snapshot of current reaction state for a message */
+    data: {
+      /** "reaction.new" or "reaction.deleted" */
+      action: 'reaction.new' | 'reaction.deleted';
+      /** ID of the message that was reacted to */
+      message_id: string;
+      /** Current full list of reactions on the message (snapshot) */
+      latest_reactions?: Array<{ type: string; user_id: string; user?: { id: string;[key: string]: unknown }; message_id: string; created_at: string; updated_at: string;[key: string]: unknown }>;
+      /** Current reaction counts (snapshot) */
+      reaction_counts?: Record<string, number>;
+      /** The specific reaction that triggered this event */
+      reaction?: { type: string; user_id: string; user?: { id: string;[key: string]: unknown }; message_id: string; created_at: string; updated_at: string;[key: string]: unknown };
+      /** Timestamp for timeline sorting */
+      created_at: string;
+    };
+  };
 
 /** Per-channel sync result (used by both syncChannel and syncAll) */
 export interface ChannelSyncResult {

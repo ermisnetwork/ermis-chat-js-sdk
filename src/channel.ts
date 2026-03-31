@@ -731,6 +731,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     return await this._update({ remove_members: [userId], self_remove: true });
   }
 
+
   /**
    * demoteModerators - remove moderator role from channel members
    *
@@ -2142,9 +2143,10 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             this.cid && this.type && this.id &&
             mlsMgrRemoved.isDesignatedEvictor(channel)
           ) {
-            // Designated evictor (owner/admin) removes the leaver's leaf nodes from MLS group
+            // Designated evictor (owner/moder) removes the leaver's leaf nodes via MLS-only commit.
+            // selfLeft=true → use POST /commit_eviction (no channel DB membership check).
             mlsMgrRemoved
-              .evictMember(this.type, this.id!, this.cid, removedUserId)
+              .evictMember(this.type, this.id!, this.cid, removedUserId, true)
               .catch((err: unknown) => {
                 console.error('[MLS Event] evictMember after member.removed failed:', this.cid, removedUserId, err);
               });
