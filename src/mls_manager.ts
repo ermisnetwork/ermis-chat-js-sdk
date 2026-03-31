@@ -131,6 +131,15 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   private _syncPromise: Promise<void> | null = null;
 
   /**
+   * Deferred eviction queue — populated during sync when a MemberLeaved system message
+   * (type 12) is seen. Drained AFTER the sync loop completes so the epoch is fully
+   * up-to-date before we create a commit.
+   *
+   * Map: cid → Set of user_ids to evict
+   */
+  private _pendingEvictions: Map<string, Set<string>> = new Map();
+
+  /**
    * In-memory dedup: message IDs already decrypted in this session.
    * Prevents race condition where waterfall decrypt (sync) consumes ratchet
    * secrets but IndexedDB write hasn't flushed before WS message.new event
@@ -402,6 +411,23 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         }
       }
 
+      // Load persisted pending evictions from previous session.
+      // These survive reconnects even after the sync cursor has advanced past
+      // the SystemMessage type 12 that originally triggered them.
+      try {
+        const persisted = await this.storage.loadPendingEvictions();
+        for (const [cid, userIds] of Object.entries(persisted)) {
+          const existing = this._pendingEvictions.get(cid) ?? new Set<string>();
+          for (const uid of userIds) existing.add(uid);
+          this._pendingEvictions.set(cid, existing);
+        }
+        if (Object.keys(persisted).length > 0) {
+          console.log('[MLS] Restored pending evictions from storage:', persisted);
+        }
+      } catch (err) {
+        console.warn('[MLS] Failed to load persisted evictions:', err);
+      }
+
       // Step 2: Sync all groups via unified API
       const savedCursors = await this.storage.loadAllSyncTimestamps();
       const groupCids = Array.from(this.groups.keys());
@@ -467,6 +493,10 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         await this._persistProvider();
 
         console.log(`[MLS] Sync complete. Groups: ${this.groups.size}`);
+
+        // Drain pending evictions (MemberLeaved offline recovery).
+        // Must run AFTER sync loop — epoch is now fully up-to-date.
+        await this._drainPendingEvictions();
       }
 
       // Step 3: Multi-device — external join for E2EE channels without local group
@@ -582,6 +612,50 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
             quoted_message_id: msg.quoted_message_id,
             mentioned_users: msg.mentioned_users,
           });
+
+          // ── Offline recovery: MemberLeaved (SystemMessage type 12) ──
+          // When A/B were offline while C self-left, they missed the member.removed WS event.
+          // On sync, they see this system message → designated evictor removes C's leaf nodes.
+          // Only owner/admin (isDesignatedEvictor) triggers eviction to avoid races.
+          const msgText: string = msg.text || '';
+          if (
+            (msg.message_type === 'system' || msg.type === 'system') &&
+            msgText.startsWith('12 ')
+          ) {
+            const leftUserId = msgText.split(' ')[1];
+            if (leftUserId && leftUserId !== this.userId) {
+              const group = this.groups.get(cid);
+              if (group) {
+                // Check C still has leaf nodes (another evictor may have already removed them)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const colonIdx = cid.indexOf(':');
+                const channelType = cid.substring(0, colonIdx);
+                const channelId = cid.substring(colonIdx + 1);
+                try {
+                  const leafNodes = group.members_by_user_id(leftUserId);
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const activeChannel = (this.client as any)?.activeChannels?.[cid];
+                  if (
+                    leafNodes && leafNodes.length > 0 &&
+                    activeChannel &&
+                    this.isDesignatedEvictor(activeChannel)
+                  ) {
+                    // Queue the eviction — will be drained after sync loop finishes
+                    // so the epoch is fully advanced before we create a commit.
+                    const queue = this._pendingEvictions.get(cid) ?? new Set<string>();
+                    queue.add(leftUserId);
+                    this._pendingEvictions.set(cid, queue);
+                    console.log('[MLS] Queued eviction (offline recovery) for', leftUserId, 'in', cid);
+                    // Persist immediately so the queue survives a crash/reconnect
+                    // even after the sync cursor has advanced past this SystemMessage.
+                    this._persistPendingEvictions().catch(console.warn);
+                  }
+                } catch (_err) {
+                  // members_by_user_id may fail if group is in invalid state — safe to ignore
+                }
+              }
+            }
+          }
         }
       } else if (eventType === 'reaction') {
         // Reaction metadata event — update reaction state for the target message
@@ -1092,32 +1166,162 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   }
 
   // ============================================================
-  // Eviction (Reject / Skip handling)
+  /**
+   * Drain the deferred eviction queue built during sync.
+   * Runs after the sync loop so epoch is fully up-to-date before we commit.
+   *
+   * Retry strategy:
+   * - `epoch_stale`: handled automatically inside `evictMember` (clear + sync + retry once)
+   * - Other failures: logged and skipped — next reconnect sync will re-queue from SystemMessage
+   */
+  private async _drainPendingEvictions(): Promise<void> {
+    if (this._pendingEvictions.size === 0) return;
+
+    const snapshot = new Map(this._pendingEvictions);
+    this._pendingEvictions.clear();
+
+    for (const [cid, userIds] of snapshot) {
+      const colonIdx = cid.indexOf(':');
+      const channelType = cid.substring(0, colonIdx);
+      const channelId = cid.substring(colonIdx + 1);
+      const group = this.groups.get(cid);
+
+      for (const userId of userIds) {
+        // ── Pre-flight: check if user still has leaf nodes in the ratchet tree ──
+        // Scenario: A queued evict(C) but failed, then B evicted C successfully.
+        // A comes back online, processCommit(B's commit) removes C from tree,
+        // then drain sees pendingEvictions still has C.
+        // Without this check, remove_users([C]) would fail (no leaves to remove).
+        if (group) {
+          try {
+            const leafNodes = group.members_by_user_id(userId);
+            if (!leafNodes || leafNodes.length === 0) {
+              // C already removed from ratchet tree (by another evictor's commit)
+              console.log('[MLS] _drainPendingEvictions: skip', userId, '— already evicted from', cid);
+              await this._removePendingEviction(cid, userId);
+              continue;
+            }
+          } catch (_checkErr) {
+            // members_by_user_id threw (invalid state) — proceed to evict, let it fail naturally
+          }
+        }
+
+        try {
+          console.log('[MLS] _drainPendingEvictions: evicting', userId, 'from', cid);
+          await this.evictMember(channelType, channelId, cid, userId);
+          // Eviction succeeded — remove this user from persisted storage
+          await this._removePendingEviction(cid, userId);
+        } catch (err) {
+          // epoch_stale is retried inside evictMember — only truly unexpected errors reach here.
+          // Re-add to queue so the next reconnect will retry.
+          console.warn('[MLS] _drainPendingEvictions: evictMember failed, will retry on next reconnect:', cid, userId, err);
+          const requeue = this._pendingEvictions.get(cid) ?? new Set<string>();
+          requeue.add(userId);
+          this._pendingEvictions.set(cid, requeue);
+          // Storage already has this entry — no need to re-persist
+        }
+      }
+    }
+  }
+
+  /** Snapshot current queue and write to IndexedDB. */
+  private async _persistPendingEvictions(): Promise<void> {
+    const snapshot: Record<string, string[]> = {};
+    for (const [cid, userIds] of this._pendingEvictions) {
+      snapshot[cid] = Array.from(userIds);
+    }
+    await this.storage.savePendingEvictions(snapshot);
+  }
+
+  /** Remove a single user from persisted pending evictions after successful eviction. */
+  private async _removePendingEviction(cid: string, userId: string): Promise<void> {
+    const current = await this.storage.loadPendingEvictions();
+    const users = new Set(current[cid] ?? []);
+    users.delete(userId);
+    if (users.size === 0) {
+      delete current[cid];
+    } else {
+      current[cid] = Array.from(users);
+    }
+    await this.storage.savePendingEvictions(current);
+  }
+
+  // Self-Leave & Orphaned Group Cleanup
+  // ============================================================
+
+  /**
+   * Cleanup local MLS group state after self-leave.
+   * Called by channel.ts `member.removed` handler when the removed user is self.
+   */
+  leaveGroup(cid: string): void {
+    if (this.groups.has(cid)) {
+      this.groups.delete(cid);
+      console.log('[MLS] leaveGroup: deleted local group state for', cid);
+      // Fire-and-forget: clear storage async
+      this._persistProvider().catch(console.warn);
+      this.storage.deleteGroup?.(cid).catch?.(console.warn);
+    }
+  }
+
+  /**
+   * Remove local groups for channels no longer in the server channel list.
+   * Called after fetching channels on init/reconnect (handles C3-offline scenario:
+   * device was offline when user left, now online → channel not in list → cleanup).
+   *
+   * @param activeChannelCids - Array of CIDs currently returned by server
+   */
+  async cleanupOrphanedGroups(activeChannelCids: string[]): Promise<void> {
+    const serverCidSet = new Set(activeChannelCids);
+    const orphans: string[] = [];
+    for (const [cid] of this.groups) {
+      if (!serverCidSet.has(cid)) {
+        orphans.push(cid);
+      }
+    }
+    for (const cid of orphans) {
+      this.groups.delete(cid);
+      await this.storage.deleteGroup?.(cid);
+      console.log('[MLS] cleanupOrphanedGroups: removed orphaned group', cid);
+    }
+    if (orphans.length > 0) {
+      await this._persistProvider();
+    }
+  }
+
+  // ============================================================
+  // Eviction (Reject / Skip / Self-leave handling)
   // ============================================================
 
   /**
    * Determine if this client is the designated evictor for a given channel.
-   * We use a deterministic rule so that exactly ONE online admin triggers eviction:
+   * We use a deterministic rule so that exactly ONE online evictor triggers commit:
    *   1. Owner (created_by.id) → always evictor
-   *   2. Otherwise → admin with lexicographically lowest user_id among owners+admins
+   *   2. Otherwise → moder with lexicographically lowest user_id
    *
-   * This prevents the race condition where multiple admins all try to evict simultaneously.
+   * Roles allowed to remove others (server: channel.rs):
+   *   ChannelRole::Owner | ChannelRole::Moder → can remove any member
+   *   ChannelRole::Member                     → self-remove only
+   *
+   * This prevents the race condition where multiple moders all try to evict simultaneously.
    */
   isDesignatedEvictor(channel: { data?: Record<string, unknown> }): boolean {
     if (!this.userId) return false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = channel.data as any;
-    // Owner check
+
+    // Owner is always the designated evictor (highest priority)
     const createdById = data?.created_by?.id || data?.channel?.created_by?.id;
     if (createdById && createdById === this.userId) return true;
 
-    // Find lowest-sorted admin
+    // Among moders (ChannelRole::Moder on server), pick the lowest-sorted user_id.
+    // Server permits: Owner | Moder | Member(self-only) to call remove_members.
+    // Member cannot evict others, so evictor candidates = Owner + Moder.
     const members: Array<{ user_id: string; channel_role?: string }> = data?.members || [];
-    const adminIds = members
-      .filter((m) => ['owner', 'admin'].includes(m.channel_role || ''))
+    const eligibleIds = members
+      .filter((m) => ['owner', 'moder'].includes(m.channel_role || ''))
       .map((m) => m.user_id)
       .sort();
-    return adminIds.length > 0 && adminIds[0] === this.userId;
+    return eligibleIds.length > 0 && eligibleIds[0] === this.userId;
   }
 
   /**

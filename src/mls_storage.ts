@@ -84,6 +84,7 @@ export interface MlsStorageAdapter {
   saveGroupState(cid: string, marker: unknown): Promise<void>;
   loadGroupState(cid: string): Promise<unknown | null>;
   listGroupCids(): Promise<string[]>;
+  deleteGroup(cid: string): Promise<void>;
 
   // ---- Provider State ----
   saveProviderState(userId: string, deviceId: string, providerBytes: Uint8Array): Promise<void>;
@@ -96,6 +97,11 @@ export interface MlsStorageAdapter {
   // ---- Batch Sync Cursors (for unified sync API) ----
   loadAllSyncTimestamps(): Promise<Record<string, string>>;
   saveAllSyncTimestamps(cursors: Record<string, string>): Promise<void>;
+
+  // ---- Pending Evictions (offline recovery persistence) ----
+  // Map: cid → array of user_ids to evict
+  loadPendingEvictions(): Promise<Record<string, string[]>>;
+  savePendingEvictions(data: Record<string, string[]>): Promise<void>;
 }
 
 // ============================================================
@@ -315,6 +321,17 @@ export class IndexedDBMlsStorage implements MlsStorageAdapter {
     });
   }
 
+  async deleteGroup(cid: string): Promise<void> {
+    const db = await this.openDB();
+    return new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_GROUPS, 'readwrite');
+      const store = tx.objectStore(STORE_GROUPS);
+      store.delete(cid);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   // ---- Provider State ----
 
   async saveProviderState(userId: string, deviceId: string, providerBytes: Uint8Array): Promise<void> {
@@ -396,6 +413,34 @@ export class IndexedDBMlsStorage implements MlsStorageAdapter {
       const store = tx.objectStore(STORE_META);
       for (const [cid, ts] of Object.entries(timestamps)) {
         store.put(ts, `sync:${cid}`);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // ---- Pending Evictions ----
+
+  async loadPendingEvictions(): Promise<Record<string, string[]>> {
+    const db = await this.openDB();
+    return new Promise<Record<string, string[]>>((resolve, reject) => {
+      const tx = db.transaction(STORE_META, 'readonly');
+      const store = tx.objectStore(STORE_META);
+      const request = store.get('pending_evictions');
+      request.onsuccess = () => resolve((request.result as Record<string, string[]>) || {});
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async savePendingEvictions(data: Record<string, string[]>): Promise<void> {
+    const db = await this.openDB();
+    return new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_META, 'readwrite');
+      const store = tx.objectStore(STORE_META);
+      if (Object.keys(data).length === 0) {
+        store.delete('pending_evictions');
+      } else {
+        store.put(data, 'pending_evictions');
       }
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);

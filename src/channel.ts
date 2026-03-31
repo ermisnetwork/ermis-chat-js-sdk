@@ -2123,11 +2123,35 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           channelState.membership = event.member;
         }
         break;
-      case 'member.removed':
-        if (event.user?.id) {
-          delete channelState.members[event.user.id];
+      case 'member.removed': {
+        const removedUserId = event.user?.id || (event.member as any)?.user_id;
+        if (removedUserId) {
+          delete channelState.members[removedUserId];
+
+          const mlsMgrRemoved = this.getClient().mlsManager;
+          const isSelfLeave = removedUserId === this.getClient().user?.id;
+
+          if (isSelfLeave) {
+            // Own devices received member.removed → cleanup local MLS group
+            if (mlsMgrRemoved?.initialized && this.cid) {
+              mlsMgrRemoved.leaveGroup(this.cid);
+            }
+          } else if (
+            event.mls_enabled &&
+            mlsMgrRemoved?.initialized &&
+            this.cid && this.type && this.id &&
+            mlsMgrRemoved.isDesignatedEvictor(channel)
+          ) {
+            // Designated evictor (owner/admin) removes the leaver's leaf nodes from MLS group
+            mlsMgrRemoved
+              .evictMember(this.type, this.id!, this.cid, removedUserId)
+              .catch((err: unknown) => {
+                console.error('[MLS Event] evictMember after member.removed failed:', this.cid, removedUserId, err);
+              });
+          }
         }
         break;
+      }
       // case 'notification.mark_unread': {
       //   const ownMessage = event.user?.id === this.getClient().user?.id;
       //   if (!(ownMessage && event.user)) break;
