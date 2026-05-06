@@ -237,10 +237,11 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
    */
   async getKeyPackagesByUserIds(
     userIds: string[],
+    countPerDevice?: number,
   ): Promise<GetKeyPackagesByCidResponse> {
     return await this._post(
       this.baseURL + '/v1/e2ee/key_packages/batch',
-      { user_ids: userIds },
+      { user_ids: userIds, ...(countPerDevice && countPerDevice > 1 ? { count_per_device: countPerDevice } : {}) },
     );
   }
 
@@ -378,6 +379,45 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
    *
    * `POST /v1/e2ee/channels/{type}/{id}/commit_eviction`
    */
+  // ---- Batch Topic E2EE Operations ----
+
+  /**
+   * Batch add members to N E2EE topics at once.
+   * Each topic has its own MLS bundle (commit + welcome + ratchet_tree + group_info + epoch).
+   * Independent processing: one topic failure does NOT affect others.
+   *
+   * `POST /v1/e2ee/channels/{type}/{id}/topics/batch_add_members`
+   */
+  async batchAddMembersToTopics(
+    channelType: string,
+    channelId: string,
+    data: BatchAddMembersToTopicsRequest,
+  ): Promise<BatchTopicResponse> {
+    return await this._post(
+      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/topics/batch_add_members`,
+      data,
+    );
+  }
+
+  /**
+   * Batch external join for N E2EE topics (multi-device).
+   * Lightweight: only commit + epoch + optional group_info per topic.
+   *
+   * `POST /v1/e2ee/channels/{type}/{id}/topics/batch_external_join`
+   */
+  async batchExternalJoinTopics(
+    channelType: string,
+    channelId: string,
+    data: BatchExternalJoinTopicsRequest,
+  ): Promise<BatchTopicResponse> {
+    return await this._post(
+      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/topics/batch_external_join`,
+      data,
+    );
+  }
+
+  // ---- Eviction ----
+
   async commitEviction(
     channelType: string,
     channelId: string,
@@ -463,5 +503,45 @@ export interface ChannelSyncResult {
 /** Response from POST /v1/e2ee/sync */
 export interface UnifiedSyncResponse extends APIResponse {
   [cid: string]: ChannelSyncResult | unknown;
+}
+
+// ============================================================
+// Batch Topic E2EE Types
+// ============================================================
+
+export interface BatchAddMembersTopicBundle {
+  topic_cid: string;
+  commit: number[];
+  welcome: number[];
+  ratchet_tree: number[];
+  group_info: number[];
+  epoch: number;
+}
+
+export interface BatchAddMembersToTopicsRequest {
+  target_user_ids: string[];
+  topics: BatchAddMembersTopicBundle[];
+}
+
+export interface BatchExternalJoinTopicBundle {
+  topic_cid: string;
+  commit: number[];
+  epoch: number;
+  group_info?: number[];
+}
+
+export interface BatchExternalJoinTopicsRequest {
+  topics: BatchExternalJoinTopicBundle[];
+}
+
+export interface BatchTopicResult {
+  topic_cid: string;
+  success: boolean;
+  error?: string;
+  epoch?: number;
+}
+
+export interface BatchTopicResponse extends APIResponse {
+  results: BatchTopicResult[];
 }
 

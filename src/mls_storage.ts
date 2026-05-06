@@ -14,6 +14,7 @@
  */
 
 import { randomId } from './utils';
+import MiniSearch from 'minisearch';
 
 // ============================================================
 // Storage Adapter Interface
@@ -65,9 +66,12 @@ export interface E2eeStoredMessage {
  *
  * Implement this interface to provide custom storage (e.g., SQLite for React Native).
  * The default `IndexedDBMlsStorage` uses browser IndexedDB.
+ *
+ * NOTE: `getDeviceId()` is a GLOBAL (per-browser) operation and does NOT
+ * require a userId — it identifies the physical device, not the user.
  */
 export interface MlsStorageAdapter {
-  // ---- Device ID ----
+  // ---- Device ID (global, per-browser) ----
   getDeviceId(): Promise<string>;
 
   // ---- Identity ----
@@ -79,6 +83,12 @@ export interface MlsStorageAdapter {
   loadE2eeMessage(messageId: string): Promise<E2eeStoredMessage | null>;
   getE2eeMessages(cid: string, limit?: number): Promise<E2eeStoredMessage[]>;
   clearE2eeMessages(cid: string): Promise<void>;
+
+  // ---- E2EE Message Search ----
+  /** Search all E2EE messages across all channels by text content. */
+  searchE2eeMessages(searchTerm: string, limit?: number): Promise<E2eeStoredMessage[]>;
+  /** Search E2EE messages within a specific channel by text content. */
+  searchE2eeMessagesByCid(cid: string, searchTerm: string, limit?: number): Promise<E2eeStoredMessage[]>;
 
   // ---- Group State ----
   saveGroupState(cid: string, marker: unknown): Promise<void>;
@@ -108,7 +118,9 @@ export interface MlsStorageAdapter {
 // IndexedDB Implementation (Browser Default)
 // ============================================================
 
-const DB_NAME = 'ermis_mls';
+const DB_NAME_PREFIX = 'ermis_mls';
+/** Global DB (no userId) — only used for migrating legacy device_id */
+const DB_NAME_LEGACY = 'ermis_mls';
 const DB_VERSION = 2;
 
 const STORE_IDENTITY = 'identity';
@@ -116,17 +128,39 @@ const STORE_MESSAGES = 'messages';
 const STORE_META = 'meta';
 const STORE_GROUPS = 'groups';
 
+/** localStorage key for device_id — global, per-browser */
+const DEVICE_ID_LS_KEY = 'ermis_device_id';
+
 /**
  * Default MLS storage adapter using browser IndexedDB.
  *
+ * Each user gets their own IndexedDB database (`ermis_mls_{userId}`) to
+ * prevent cross-user state contamination during login/logout cycles.
+ * `device_id` is stored in `localStorage` (global, per-browser).
+ *
  * @example
  * ```ts
- * const storage = new IndexedDBMlsStorage();
+ * const storage = new IndexedDBMlsStorage('user123');
  * const deviceId = await storage.getDeviceId();
  * ```
  */
 export class IndexedDBMlsStorage implements MlsStorageAdapter {
   private dbPromise: Promise<IDBDatabase> | null = null;
+  private readonly dbName: string;
+
+  /**
+   * @param userId - The current user's ID. Used to scope the IndexedDB
+   *                 database name so each user's MLS state is isolated.
+   *                 Pass empty string for legacy/global access (migration only).
+   */
+  constructor(userId: string = '') {
+    if (userId) {
+      this.dbName = `${DB_NAME_PREFIX}_${userId}`;
+    } else {
+      // Legacy fallback — global DB (used during device_id migration)
+      this.dbName = DB_NAME_LEGACY;
+    }
+  }
 
   /**
    * Open (or create) the IndexedDB database.
@@ -136,7 +170,7 @@ export class IndexedDBMlsStorage implements MlsStorageAdapter {
     if (this.dbPromise) return this.dbPromise;
 
     this.dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(this.dbName, DB_VERSION);
 
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = (event.target as IDBOpenDBRequest).result;
@@ -176,29 +210,92 @@ export class IndexedDBMlsStorage implements MlsStorageAdapter {
     return this.dbPromise;
   }
 
-  // ---- Device ID ----
+  // ---- Device ID (global, per-browser via localStorage) ----
 
   async getDeviceId(): Promise<string> {
-    const db = await this.openDB();
-    return new Promise<string>((resolve, reject) => {
-      const tx = db.transaction(STORE_META, 'readonly');
-      const store = tx.objectStore(STORE_META);
-      const request = store.get('device_id');
+    // 1. Check localStorage first
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(DEVICE_ID_LS_KEY);
+      if (stored) return stored;
+    }
 
-      request.onsuccess = () => {
-        if (request.result) {
-          resolve(request.result as string);
-        } else {
-          // Generate new device ID using SDK's randomId utility
-          const deviceId = `web-${randomId()}`;
-          const writeTx = db.transaction(STORE_META, 'readwrite');
-          const writeStore = writeTx.objectStore(STORE_META);
-          writeStore.put(deviceId, 'device_id');
-          writeTx.oncomplete = () => resolve(deviceId);
-          writeTx.onerror = () => reject(writeTx.error);
+    // 2. Backward compat: migrate from legacy global IndexedDB
+    try {
+      const legacyId = await this._migrateLegacyDeviceId();
+      if (legacyId) return legacyId;
+    } catch (_) {
+      // IndexedDB unavailable — generate new
+    }
+
+    // 3. Generate new device ID
+    const deviceId = `web-${randomId()}`;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(DEVICE_ID_LS_KEY, deviceId);
+    }
+    return deviceId;
+  }
+
+  /**
+   * Migrate device_id from legacy global IndexedDB (`ermis_mls`) to localStorage.
+   * Returns the migrated ID or null if not found.
+   */
+  private async _migrateLegacyDeviceId(): Promise<string | null> {
+    return new Promise<string | null>((resolve) => {
+      const request = indexedDB.open(DB_NAME_LEGACY, DB_VERSION);
+
+      request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+        // Legacy DB doesn't exist yet — nothing to migrate
+        const db = (event.target as IDBOpenDBRequest).result;
+        // Create stores to avoid errors, but we won't find device_id
+        if (!db.objectStoreNames.contains(STORE_META)) {
+          db.createObjectStore(STORE_META);
+        }
+        if (!db.objectStoreNames.contains(STORE_IDENTITY)) {
+          db.createObjectStore(STORE_IDENTITY);
+        }
+        if (!db.objectStoreNames.contains(STORE_MESSAGES)) {
+          const msgStore = db.createObjectStore(STORE_MESSAGES, { keyPath: 'id' });
+          msgStore.createIndex('cid', 'cid', { unique: false });
+          msgStore.createIndex('cid_created', ['cid', 'created_at'], { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORE_GROUPS)) {
+          db.createObjectStore(STORE_GROUPS);
         }
       };
-      request.onerror = () => reject(request.error);
+
+      request.onsuccess = () => {
+        const db = request.result;
+        try {
+          if (!db.objectStoreNames.contains(STORE_META)) {
+            db.close();
+            resolve(null);
+            return;
+          }
+          const tx = db.transaction(STORE_META, 'readonly');
+          const store = tx.objectStore(STORE_META);
+          const getReq = store.get('device_id');
+          getReq.onsuccess = () => {
+            const legacyId = getReq.result as string | undefined;
+            db.close();
+            if (legacyId && typeof localStorage !== 'undefined') {
+              localStorage.setItem(DEVICE_ID_LS_KEY, legacyId);
+              console.log('[MLS Storage] Migrated device_id from IndexedDB to localStorage:', legacyId);
+              resolve(legacyId);
+            } else {
+              resolve(null);
+            }
+          };
+          getReq.onerror = () => {
+            db.close();
+            resolve(null);
+          };
+        } catch (_) {
+          db.close();
+          resolve(null);
+        }
+      };
+
+      request.onerror = () => resolve(null);
     });
   }
 
@@ -234,7 +331,11 @@ export class IndexedDBMlsStorage implements MlsStorageAdapter {
       const tx = db.transaction(STORE_MESSAGES, 'readwrite');
       const store = tx.objectStore(STORE_MESSAGES);
       store.put(message);
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        // Incrementally update MiniSearch index
+        this._indexMessage(message);
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
     });
   }
@@ -269,6 +370,10 @@ export class IndexedDBMlsStorage implements MlsStorageAdapter {
 
   async clearE2eeMessages(cid: string): Promise<void> {
     const db = await this.openDB();
+
+    // Collect message IDs for this channel to purge from search index
+    const msgIds: string[] = [];
+
     return new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_MESSAGES, 'readwrite');
       const store = tx.objectStore(STORE_MESSAGES);
@@ -277,13 +382,161 @@ export class IndexedDBMlsStorage implements MlsStorageAdapter {
       request.onsuccess = (event: Event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
         if (cursor) {
+          msgIds.push((cursor.value as E2eeStoredMessage).id);
           cursor.delete();
           cursor.continue();
         }
       };
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        // Purge cleared messages from MiniSearch index
+        if (this._searchIndex && this._indexReady) {
+          for (const id of msgIds) {
+            try {
+              this._searchIndex.discard(id);
+              this._indexedIds.delete(id);
+            } catch (_) { /* already removed */ }
+          }
+        }
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
     });
+  }
+
+  // ---- E2EE Message Search (MiniSearch-powered) ----
+
+  /** MiniSearch instance — lazily initialized on first search. */
+  private _searchIndex: MiniSearch<E2eeStoredMessage> | null = null;
+  /** Set of indexed message IDs — for dedup on incremental add. */
+  private _indexedIds: Set<string> = new Set();
+  /** Whether the full index has been built from IndexedDB. */
+  private _indexReady = false;
+  /** Promise for the build-in-progress (prevents double-build). */
+  private _indexBuildPromise: Promise<void> | null = null;
+
+  /**
+   * Create a fresh MiniSearch instance with fields tuned for chat messages.
+   */
+  private _createSearchIndex(): MiniSearch<E2eeStoredMessage> {
+    return new MiniSearch<E2eeStoredMessage>({
+      fields: ['text'],
+      storeFields: ['id', 'cid', 'text', 'user_id', 'user', 'created_at', 'type',
+        'content_type', 'parent_id', 'quoted_message_id', 'mentioned_users',
+        'mentioned_all', 'attachments', 'sticker_url', 'pinned', 'reaction_counts',
+        'latest_reactions', 'poll_type', 'poll_choice_counts', 'latest_poll_choices',
+        'quoted_message'],
+      idField: 'id',
+      // Vietnamese-friendly: lowercase, strip diacritics for indexing
+      processTerm: (term) => {
+        if (!term) return null;
+        return term
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd');
+      },
+      searchOptions: {
+        // Also strip diacritics on search queries for consistent matching
+        processTerm: (term) => {
+          if (!term) return null;
+          return term
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/đ/g, 'd');
+        },
+        prefix: true,
+        fuzzy: 0.2,
+        combineWith: 'AND',
+      },
+    });
+  }
+
+  /**
+   * Build the search index from all messages in IndexedDB.
+   * Called lazily on first search. Subsequent calls are no-ops.
+   */
+  private async _ensureIndex(): Promise<void> {
+    if (this._indexReady) return;
+    if (this._indexBuildPromise) return this._indexBuildPromise;
+
+    this._indexBuildPromise = (async () => {
+      const db = await this.openDB();
+      const allMsgs = await new Promise<E2eeStoredMessage[]>((resolve, reject) => {
+        const tx = db.transaction(STORE_MESSAGES, 'readonly');
+        const store = tx.objectStore(STORE_MESSAGES);
+        const request = store.getAll();
+        request.onsuccess = () => resolve((request.result as E2eeStoredMessage[]) || []);
+        request.onerror = () => reject(request.error);
+      });
+
+      this._searchIndex = this._createSearchIndex();
+      this._indexedIds = new Set();
+
+      // Filter messages with searchable text content
+      const indexable = allMsgs.filter(msg => msg.text && msg.text.length > 0);
+      if (indexable.length > 0) {
+        this._searchIndex.addAll(indexable);
+        for (const msg of indexable) {
+          this._indexedIds.add(msg.id);
+        }
+      }
+
+      this._indexReady = true;
+      this._indexBuildPromise = null;
+      console.log(`[MLS Storage] Search index built: ${indexable.length} messages indexed`);
+    })();
+
+    return this._indexBuildPromise;
+  }
+
+  /**
+   * Incrementally add/update a single message in the search index.
+   * Called from saveE2eeMessage() after successful IndexedDB write.
+   */
+  private _indexMessage(message: E2eeStoredMessage): void {
+    if (!this._searchIndex || !this._indexReady) return;
+    if (!message.text || message.text.length === 0) return;
+
+    try {
+      if (this._indexedIds.has(message.id)) {
+        // Update: remove old, add new
+        this._searchIndex.discard(message.id);
+      }
+      this._searchIndex.add(message);
+      this._indexedIds.add(message.id);
+    } catch (err) {
+      console.warn('[MLS Storage] Failed to index message:', message.id, err);
+    }
+  }
+
+  async searchE2eeMessages(searchTerm: string, limit = 25): Promise<E2eeStoredMessage[]> {
+    await this._ensureIndex();
+    if (!this._searchIndex) return [];
+
+    const results = this._searchIndex.search(searchTerm);
+
+    // Sort by created_at descending (MiniSearch returns by relevance score)
+    const sorted = results
+      .sort((a, b) => new Date((b as any).created_at).getTime() - new Date((a as any).created_at).getTime())
+      .slice(0, limit);
+
+    return sorted as unknown as E2eeStoredMessage[];
+  }
+
+  async searchE2eeMessagesByCid(cid: string, searchTerm: string, limit = 25): Promise<E2eeStoredMessage[]> {
+    await this._ensureIndex();
+    if (!this._searchIndex) return [];
+
+    const results = this._searchIndex.search(searchTerm, {
+      filter: (result) => (result as any).cid === cid,
+    });
+
+    const sorted = results
+      .sort((a, b) => new Date((b as any).created_at).getTime() - new Date((a as any).created_at).getTime())
+      .slice(0, limit);
+
+    return sorted as unknown as E2eeStoredMessage[];
   }
 
   // ---- Group State ----

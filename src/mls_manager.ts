@@ -149,7 +149,9 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   private _decryptedMsgIds = new Set<string>();
 
   constructor() {
-    this.storage = new IndexedDBMlsStorage();
+    // Storage is created in initialize() with the userId for user-scoped DB.
+    // Use a temporary placeholder; callers must call initialize() before use.
+    this.storage = null as unknown as MlsStorageAdapter;
   }
 
   // ============================================================
@@ -174,6 +176,9 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
     if (options?.storage) {
       this.storage = options.storage;
+    } else {
+      // User-scoped storage: each user gets their own IndexedDB database
+      this.storage = new IndexedDBMlsStorage(userId);
     }
     if (options?.wasmPath) {
       this._wasmPath = options.wasmPath;
@@ -182,7 +187,15 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       this._injectedWasm = options.wasmModule;
     }
 
-    this.deviceId = await this.storage.getDeviceId();
+    // Reuse deviceId if already eagerly initialized in connectUser(),
+    // otherwise fall back to storage (e.g., non-browser or custom flow).
+    if ((this.client as any).deviceId) {
+      this.deviceId = (this.client as any).deviceId;
+    } else {
+      this.deviceId = await this.storage.getDeviceId();
+      // Propagate back to client so WS reconnects and HTTP headers include it
+      (this.client as any).deviceId = this.deviceId;
+    }
 
     // 1. Load WASM + restore or create Provider
     await this._initWasm();
@@ -998,19 +1011,40 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
    * and returns the commit + welcome + ratchet_tree + group_info bundle.
    * The caller passes this bundle to `channel.create({ mls_enabled: true, ...bundle })`.
    *
-   * This mirrors `enableE2ee` but is used at channel creation time.
+   * **Messaging (DM)**: When `channelType === 'messaging'`, the method auto-computes
+   * `channelId` and `cid` using `hash_channel_id(projectId, allMemberUserIds)` from
+   * the WASM binding. The computed `channel_id` is included in the returned bundle
+   * so the caller can pass it in `data.channel_id` for server validation.
+   * In this case, `channelId` and `cid` params are ignored (can be null/empty).
+   *
+   * **Team**: `channelId` and `cid` must be provided by the caller (e.g. UUID).
    *
    * @param channelType - e.g. "messaging" or "team"
-   * @param channelId - new channel ID (must be known before calling, e.g. UUID)
-   * @param cid - e.g. "team:proj-uuid"
+   * @param channelId - new channel ID. Ignored for Messaging (computed from hash).
+   * @param cid - e.g. "team:proj-uuid". Ignored for Messaging (computed from hash).
    * @param allMemberUserIds - all member user IDs to add (including sender if desired — server KP API auto-excludes sender's KPs)
    */
   async createE2eeChannel(
     channelType: string,
-    channelId: string,
-    cid: string,
+    channelId: string | null,
+    cid: string | null,
     allMemberUserIds: string[],
-  ): Promise<{ commit: number[]; welcome: number[]; ratchet_tree: number[]; group_info: number[]; epoch: number }> {
+  ): Promise<{ commit: number[]; welcome: number[]; ratchet_tree: number[]; group_info: number[]; epoch: number; channel_id?: string; cid: string }> {
+    // For messaging (DM), compute deterministic channelId from hash_channel_id binding.
+    // This ensures the client-generated cid matches what the server will validate.
+    if (channelType === 'messaging') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const projectId = (this.client as any)?.projectId;
+      if (!projectId) throw new Error('[MLS] createE2eeChannel: client.projectId is required for messaging E2EE');
+      channelId = wasmModule.hash_channel_id(projectId, allMemberUserIds);
+      cid = `messaging:${channelId}`;
+      console.log('[MLS] createE2eeChannel: computed messaging channelId:', channelId);
+    }
+
+    if (!channelId || !cid) {
+      throw new Error('[MLS] createE2eeChannel: channelId and cid are required for non-messaging channels');
+    }
+
     // 1. Create MLS group (solo — just creator, epoch 0)
     const group = this.createGroup(cid);
 
@@ -1057,13 +1091,22 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
     console.log('[MLS] createE2eeChannel: bundle ready for cid:', cid, 'epoch:', Number(group.epoch()));
 
-    return {
+    const result: { commit: number[]; welcome: number[]; ratchet_tree: number[]; group_info: number[]; epoch: number; channel_id?: string; cid: string } = {
       commit: Array.from(commitBundle.commit as Uint8Array),
       welcome: allKeyPackages.length > 0 ? Array.from(commitBundle.welcome as Uint8Array) : [],
       ratchet_tree: Array.from(ratchetTree.to_bytes() as Uint8Array),
       group_info: Array.from(exportedGI as Uint8Array),
       epoch: premergeEpoch,
+      cid,
     };
+
+    // For messaging, include channel_id so the caller can pass it in data.channel_id
+    // for server-side hash validation.
+    if (channelType === 'messaging') {
+      result.channel_id = channelId;
+    }
+
+    return result;
   }
 
   // ============================================================
@@ -2170,7 +2213,13 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   // ============================================================
 
   /**
-   * Clean up all groups and state
+   * Destroy the MLS manager — free WASM objects and clean up all in-memory state.
+   *
+   * Call this during `disconnectUser()` to prevent stale state
+   * from leaking into the next user session.
+   *
+   * Does NOT delete IndexedDB data (user-scoped DB preserves
+   * state for when the same user logs back in).
    */
   destroy(): void {
     const groups = Array.from(this.groups.values());
@@ -2202,8 +2251,323 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     this.initialized = false;
     this.provider = null;
     this.identity = null;
+    this.userId = null;
+    this.deviceId = null;
     this.e2eeClient = null;
     this.client = null;
+    this._decryptedMsgIds.clear();
+    this._pendingEvictions.clear();
+    this._syncing = false;
+    this._syncPromise = null;
+    this._providerRestored = false;
+    // Reset storage so next initialize() creates a new user-scoped instance
+    this.storage = null as unknown as MlsStorageAdapter;
     console.log('[MLS] Manager destroyed');
+  }
+  // ============================================================
+  // E2EE Topic Operations
+  // ============================================================
+
+  /**
+   * Prepare MLS bundle for creating a new E2EE topic.
+   *
+   * Mirrors `createE2eeChannel` but for a topic within a parent channel.
+   * Creates a new MLS group, adds all parent members, and returns the bundle
+   * that the caller passes to `channel.createTopic({ mls_enabled: true, ...bundle })`.
+   *
+   * @param topicCid - e.g. "topic:proj-uuid"
+   * @param parentMemberUserIds - all member user IDs from the parent channel
+   */
+  async createE2eeTopic(
+    topicCid: string,
+    parentMemberUserIds: string[],
+  ): Promise<{ commit: number[]; welcome: number[]; ratchet_tree: number[]; group_info: number[]; epoch: number }> {
+    if (!this.initialized) throw new Error('[MLS] Not initialized');
+
+    // 1. Create MLS group (solo — just creator, epoch 0)
+    const group = this.createGroup(topicCid);
+
+    // 2. Fetch key packages for all members via batch API (no channel needed)
+    //    Server auto-excludes sender; members without KPs are silently omitted.
+    const { members } = await this.e2eeClient!.getKeyPackagesByUserIds(parentMemberUserIds);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allKeyPackages: any[] = [];
+    for (const member of members) {
+      for (const kpData of member.key_packages) {
+        const kp = wasmModule.KeyPackage.from_bytes(new Uint8Array(kpData.key_package));
+        allKeyPackages.push(kp);
+      }
+    }
+
+    // 3. Add members → commit + welcome (or solo commit if no KPs)
+    const commitBundle = allKeyPackages.length > 0
+      ? group.add_members(this.provider, this.identity, allKeyPackages)
+      : group.commit_pending_proposals(this.provider, this.identity);
+
+    // 4. Export ratchet tree
+    const ratchetTree = group.export_ratchet_tree();
+
+    // 5. Get group_info from commitBundle
+    const exportedGI = commitBundle.group_info;
+    if (!exportedGI || exportedGI.length === 0) {
+      group.clear_pending_commit(this.provider);
+      await this._persistProvider();
+      throw new Error('[MLS] createE2eeTopic: commitBundle.group_info is empty — cannot proceed');
+    }
+
+    // 6. Capture pre-merge epoch
+    const premergeEpoch = Number(group.epoch());
+
+    // 7. Merge commit locally (group advances to epoch N+1)
+    group.merge_pending_commit(this.provider);
+    await this._persistProvider();
+
+    console.log('[MLS] createE2eeTopic: bundle ready for:', topicCid, 'epoch:', Number(group.epoch()));
+
+    return {
+      commit: Array.from(commitBundle.commit),
+      welcome: allKeyPackages.length > 0 ? Array.from(commitBundle.welcome) : [],
+      ratchet_tree: Array.from(ratchetTree.to_bytes()),
+      group_info: Array.from(exportedGI),
+      epoch: premergeEpoch,
+    };
+  }
+
+  /**
+   * Batch add members to N E2EE topics.
+   *
+   * WASM operations are sequential (state integrity), but the API call is batched
+   * into a single request. For each topic, creates add_members commit+welcome,
+   * then sends all bundles at once.
+   *
+   * @param parentChannelType - parent channel type (e.g. "team")
+   * @param parentChannelId - parent channel ID
+   * @param topicCids - list of topic CIDs to add members to
+   * @param newUserIds - user IDs being added
+   */
+  async batchAddMembersToTopics(
+    parentChannelType: string,
+    parentChannelId: string,
+    topicCids: string[],
+    newUserIds: string[],
+  ): Promise<{ results: Array<{ topic_cid: string; success: boolean; error?: string; epoch?: number }> }> {
+    if (!this.initialized) throw new Error('[MLS] Not initialized');
+    if (topicCids.length === 0) return { results: [] };
+
+    // 1. Fetch KPs for new users — need N KPs per device (N = number of topics)
+    const countPerDevice = topicCids.length;
+    const { members } = await this.e2eeClient!.getKeyPackagesByUserIds(newUserIds, countPerDevice);
+
+    // 2. Build per-device KP queue: deviceId → [kp1, kp2, ..., kpN]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const deviceKpQueues = new Map<string, any[]>();
+    for (const member of members) {
+      for (const kpData of member.key_packages) {
+        const key = `${member.user_id}:${kpData.device_id}`;
+        if (!deviceKpQueues.has(key)) deviceKpQueues.set(key, []);
+        const kp = wasmModule.KeyPackage.from_bytes(new Uint8Array(kpData.key_package));
+        deviceKpQueues.get(key)!.push(kp);
+      }
+    }
+
+    // 3. Sequential WASM: create bundle for each topic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const topicBundles: any[] = [];
+    const processedCids: string[] = [];
+
+    for (let i = 0; i < topicCids.length; i++) {
+      const topicCid = topicCids[i];
+      const group = this.groups.get(topicCid);
+      if (!group) {
+        console.warn('[MLS] batchAddMembersToTopics: no group for', topicCid, '— skipping');
+        continue;
+      }
+
+      // Pick KP[i] from each device's queue
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const kpsForThisTopic: any[] = [];
+      for (const [, queue] of deviceKpQueues) {
+        if (i < queue.length) {
+          kpsForThisTopic.push(queue[i]);
+        }
+      }
+
+      if (kpsForThisTopic.length === 0) {
+        console.warn('[MLS] batchAddMembersToTopics: no KPs available for topic', topicCid);
+        continue;
+      }
+
+      try {
+        const commitBundle = group.add_members(this.provider, this.identity, kpsForThisTopic);
+        const ratchetTree = group.export_ratchet_tree();
+        const groupInfo = commitBundle.group_info;
+
+        if (!groupInfo || groupInfo.length === 0) {
+          group.clear_pending_commit(this.provider);
+          console.error('[MLS] batchAddMembersToTopics: empty group_info for', topicCid);
+          continue;
+        }
+
+        topicBundles.push({
+          topic_cid: topicCid,
+          commit: Array.from(commitBundle.commit),
+          welcome: Array.from(commitBundle.welcome),
+          ratchet_tree: Array.from(ratchetTree.to_bytes()),
+          group_info: Array.from(groupInfo),
+          epoch: Number(group.epoch()),
+        });
+        processedCids.push(topicCid);
+      } catch (err) {
+        console.error('[MLS] batchAddMembersToTopics: WASM error for', topicCid, err);
+      }
+    }
+
+    if (topicBundles.length === 0) {
+      return { results: [] };
+    }
+
+    // 4. Batch API call
+    let response;
+    try {
+      response = await this.e2eeClient!.batchAddMembersToTopics(
+        parentChannelType,
+        parentChannelId,
+        { target_user_ids: newUserIds, topics: topicBundles },
+      );
+    } catch (err) {
+      // Server rejected entirely → clear all pending commits
+      for (const cid of processedCids) {
+        const g = this.groups.get(cid);
+        if (g) {
+          g.clear_pending_commit(this.provider);
+        }
+      }
+      await this._persistProvider();
+      throw err;
+    }
+
+    // 5. For each successful topic → merge pending commit
+    for (const result of response.results) {
+      const g = this.groups.get(result.topic_cid);
+      if (!g) continue;
+
+      if (result.success) {
+        g.merge_pending_commit(this.provider);
+        console.log('[MLS] batchAddMembers: merged', result.topic_cid, 'epoch:', result.epoch);
+      } else {
+        g.clear_pending_commit(this.provider);
+        console.warn('[MLS] batchAddMembers: failed', result.topic_cid, result.error);
+      }
+    }
+
+    await this._persistProvider();
+    return response;
+  }
+
+  /**
+   * Batch external join for N E2EE topics (multi-device).
+   *
+   * For each topic, fetches GroupInfo → creates external commit → collects all → sends batch request.
+   *
+   * @param parentChannelType - parent channel type
+   * @param parentChannelId - parent channel ID
+   * @param topicCids - list of E2EE topic CIDs to join
+   */
+  async batchExternalJoinTopics(
+    parentChannelType: string,
+    parentChannelId: string,
+    topicCids: string[],
+  ): Promise<{ results: Array<{ topic_cid: string; success: boolean; error?: string; epoch?: number }> }> {
+    if (!this.initialized) throw new Error('[MLS] Not initialized');
+    if (topicCids.length === 0) return { results: [] };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const topicBundles: any[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pendingGroups = new Map<string, any>();
+
+    // 1. Sequential: fetch GroupInfo + external join for each topic
+    for (const topicCid of topicCids) {
+      try {
+        // Extract channelType/channelId from topic CID
+        const colonIdx = topicCid.indexOf(':');
+        const topicChannelId = topicCid.substring(colonIdx + 1);
+
+        // Fetch GroupInfo
+        const { group_info } = await this.e2eeClient!.getGroupInfo('topic', topicChannelId);
+
+        // WASM: External join
+        const result = wasmModule.Group.join_external(
+          this.provider,
+          this.identity,
+          new Uint8Array(group_info),
+          null,
+        );
+        const group = result.group;
+        if (!group) {
+          console.error('[MLS] batchExternalJoin: no group for', topicCid);
+          continue;
+        }
+
+        pendingGroups.set(topicCid, group);
+        topicBundles.push({
+          topic_cid: topicCid,
+          commit: Array.from(result.commit),
+          epoch: Number(group.epoch()),
+          // group_info is uploaded separately after merge
+        });
+      } catch (err) {
+        console.error('[MLS] batchExternalJoin: error for', topicCid, err);
+      }
+    }
+
+    if (topicBundles.length === 0) {
+      return { results: [] };
+    }
+
+    // 2. Batch API call
+    let response;
+    try {
+      response = await this.e2eeClient!.batchExternalJoinTopics(
+        parentChannelType,
+        parentChannelId,
+        { topics: topicBundles },
+      );
+    } catch (err) {
+      // Server rejected entirely → clear all pending commits
+      for (const [, group] of pendingGroups) {
+        try { group.clear_pending_commit(this.provider); } catch (e) { /* ignore */ }
+      }
+      await this._persistProvider();
+      throw err;
+    }
+
+    // 3. For each successful topic → merge + cache + upload GroupInfo
+    for (const result of response.results) {
+      const group = pendingGroups.get(result.topic_cid);
+      if (!group) continue;
+
+      if (result.success) {
+        group.merge_pending_commit(this.provider);
+        this.groups.set(result.topic_cid, group);
+        await this._saveGroup(result.topic_cid);
+
+        // Extract channel parts for getGroupInfo upload
+        const colonIdx = result.topic_cid.indexOf(':');
+        const topicChannelId = result.topic_cid.substring(colonIdx + 1);
+        await this._uploadGroupInfo('topic', topicChannelId, group);
+
+        // Save cursor
+        await this.storage.saveSyncTimestamp(result.topic_cid, String(Date.now()));
+
+        console.log('[MLS] batchExternalJoin: joined', result.topic_cid, 'epoch:', result.epoch);
+      } else {
+        try { group.clear_pending_commit(this.provider); } catch (e) { /* ignore */ }
+        console.warn('[MLS] batchExternalJoin: failed', result.topic_cid, result.error);
+      }
+    }
+
+    await this._persistProvider();
+    return response;
   }
 }

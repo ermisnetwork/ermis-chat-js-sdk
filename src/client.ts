@@ -12,6 +12,7 @@ import { DevToken, JWTUserToken } from './signing';
 import { TokenManager } from './token_manager';
 import { WSConnectionFallback } from './connection_fallback';
 import { Campaign } from './campaign';
+import { IndexedDBMlsStorage } from './mls_storage';
 import { Segment } from './segment';
 import { isErrorResponse, isWSFailure } from './errors';
 import { EventSourcePolyfill } from 'event-source-polyfill';
@@ -594,6 +595,26 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     this.userID = user.id;
     this.anonymous = false;
 
+    // Eagerly initialize deviceId from localStorage BEFORE opening WS connection.
+    // This ensures device_id is sent in the very first WS URL so the server
+    // can register the client session immediately. MLS Manager later reuses
+    // this deviceId instead of re-generating.
+    // device_id is global (per-browser), not per-user.
+    if (this.browser && !this.deviceId) {
+      try {
+        const mlsStorage = new IndexedDBMlsStorage();
+        this.deviceId = await mlsStorage.getDeviceId();
+        this.logger('info', `client:connectUser() - deviceId initialized: ${this.deviceId}`, {
+          tags: ['connection', 'client'],
+        });
+      } catch (err) {
+        this.logger('warn', 'client:connectUser() - Failed to initialize deviceId from storage', {
+          tags: ['connection', 'client'],
+          error: err,
+        });
+      }
+    }
+
     const setTokenPromise = this._setToken(user, userTokenOrProvider);
     this._setUser(user);
     this.state.updateUser({ id: user.id, name: user?.name || user.id, avatar: user?.image || '' });
@@ -871,12 +892,22 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
       tags: ['connection', 'client'],
     });
 
+    // Destroy MLS manager in-memory state to prevent cross-user leakage
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mlsMgr = (this as any).mlsManager;
+    if (mlsMgr && typeof mlsMgr.destroy === 'function') {
+      mlsMgr.destroy();
+      (this as any).mlsManager = undefined;
+    }
+
     // remove the user specific fields
     delete this.user;
     delete this._user;
     delete this.userID;
 
     this.anonymous = false;
+    // Reset deviceId so next connectUser() re-reads from localStorage
+    this.deviceId = undefined;
 
     const closePromise = this.closeConnection(timeout);
 
@@ -2237,6 +2268,96 @@ export class ErmisChat<ErmisChatGenerics extends ExtendableGenerics = DefaultGen
     await this.wsPromise;
 
     return await this.get<SearchAPIResponse<ErmisChatGenerics>>(this.baseURL + '/search', { payload });
+  }
+
+  /**
+   * searchGlobalMessages - Search messages across all channels.
+   *
+   * Uses a single server API call (POST /channels/search/global) for standard channels,
+   * plus local MiniSearch for E2EE channels. Results are merged and sorted.
+   *
+   * @param {string} search_term The search query
+   * @param {number} offset Pagination offset
+   * @param {number} limit Max results per channel
+   * @return {Promise<{messages: any[], total: number}>} Merged search results
+   */
+  async searchGlobalMessages(search_term: string, offset = 0, limit = 25) {
+    if (!search_term) {
+      return { messages: [], total: 0 };
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allMessages: any[] = [];
+    let totalCount = 0;
+
+    // 1. Server-side search for standard channels (single API call)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const serverResult = await this.post<any>(this.baseURL + '/channels/search/global', {
+        search_term,
+        limit,
+        offset,
+      });
+
+      if (serverResult?.results) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const channelResult of serverResult.results) {
+          const { cid, channel_name, channel_type, messages, total } = channelResult;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (messages || []).forEach((msg: any) => {
+            // Extract display_type wrapper (server returns DisplayIndexMessage)
+            const msgData = msg.display_type === 'normal' ? msg : msg;
+            allMessages.push({
+              ...msgData,
+              channel_name: channel_name || '',
+              channel_type: channel_type || '',
+              cid,
+            });
+          });
+          totalCount += total || 0;
+        }
+      }
+    } catch (err) {
+      console.warn('[searchGlobalMessages] Server search failed:', err);
+    }
+
+    // 2. Client-side search for E2EE channels (MiniSearch via IndexedDB)
+    try {
+      const cids = Object.keys(this.activeChannels);
+      const e2eeCids = cids.filter((cid) => {
+        const channel = this.activeChannels[cid];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (channel?.data as any)?.mls_enabled === true;
+      });
+
+      if (e2eeCids.length > 0 && this.mlsManager?.storage) {
+        const e2eeResults = await this.mlsManager.storage.searchE2eeMessages(search_term, limit);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const msg of e2eeResults) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const channel = this.activeChannels[(msg as any).cid];
+          allMessages.push({
+            ...msg,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            channel_name: (channel?.data as any)?.name || '',
+            channel_type: channel?.type || '',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            cid: (msg as any).cid,
+          });
+        }
+        totalCount += e2eeResults.length;
+      }
+    } catch (err) {
+      console.warn('[searchGlobalMessages] E2EE local search failed:', err);
+    }
+
+    // Sort by created_at descending
+    allMessages.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return {
+      messages: allMessages.slice(0, limit),
+      total: totalCount,
+    };
   }
 
   async searchPublicChannel(search_term: string, offset = 0, limit = 25) {

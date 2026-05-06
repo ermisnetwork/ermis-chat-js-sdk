@@ -641,7 +641,62 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     );
   }
 
+  /**
+   * searchMessage - Search messages in this channel.
+   *
+   * Handles 3 scenarios:
+   * - Standard channel: 100% server-side search (Meilisearch)
+   * - E2EE channel (created with E2EE): 100% local search (IndexedDB)
+   * - Upgraded channel (standard → E2EE): Hybrid search — server (pre-mls_enabled_at) + local (post-mls_enabled_at)
+   */
   async searchMessage(search_term: string, offset: number) {
+    const isE2ee = (this.data as any)?.mls_enabled;
+    const mlsEnabledAt = (this.data as any)?.mls_enabled_at;
+
+    if (!isE2ee) {
+      // Standard channel → 100% server search
+      return this._searchServerMessages(search_term, offset);
+    }
+
+    if (isE2ee && !mlsEnabledAt) {
+      // Channel created E2EE from start → 100% local search
+      return this._searchLocalE2eeMessages(search_term, offset);
+    }
+
+    // Upgraded channel → hybrid: server (pre-E2EE) + local (post-E2EE)
+    const [serverResult, localResult] = await Promise.allSettled([
+      this._searchServerMessages(search_term, 0).catch(() => null),
+      this._searchLocalE2eeMessages(search_term, 0),
+    ]);
+
+    const serverMsgs =
+      serverResult.status === 'fulfilled' && serverResult.value ? serverResult.value.messages || [] : [];
+    const localMsgs =
+      localResult.status === 'fulfilled' && localResult.value ? localResult.value.messages || [] : [];
+
+    // Merge & sort by created_at desc, dedup by id
+    const allMsgs = [...serverMsgs, ...localMsgs];
+    const seen = new Set<string>();
+    const merged = allMsgs
+      .filter((msg: any) => {
+        if (seen.has(msg.id)) return false;
+        seen.add(msg.id);
+        return true;
+      })
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    if (merged.length === 0) return null;
+
+    return {
+      total: merged.length,
+      messages: merged.slice(offset, offset + 25),
+    };
+  }
+
+  /**
+   * Server-side message search via Meilisearch (standard channels).
+   */
+  private async _searchServerMessages(search_term: string, offset: number) {
     const response: any = await this.getClient().post(this.getClient().baseURL + `/channels/search`, {
       cid: this.cid,
       search_term,
@@ -658,6 +713,25 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       messages: response?.search_result?.messages.map((message: any) => {
         const user = getUserInfo(message.user_id, Object.values(this.getClient().state.users));
         return { ...message, user };
+      }),
+    };
+  }
+
+  /**
+   * Local E2EE message search from IndexedDB (decrypted messages only).
+   */
+  private async _searchLocalE2eeMessages(search_term: string, offset: number) {
+    const mlsManager = this.getClient().mlsManager;
+    if (!mlsManager?.storage) return null;
+
+    const matches = await mlsManager.storage.searchE2eeMessagesByCid(this.cid, search_term, 100);
+    if (!matches || matches.length === 0) return null;
+
+    return {
+      total: matches.length,
+      messages: matches.slice(offset, offset + 25).map((msg: any) => {
+        const user = getUserInfo(msg.user_id, Object.values(this.getClient().state.users));
+        return { ...msg, user };
       }),
     };
   }
@@ -1263,6 +1337,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
     const project_id = this._client.projectId;
     const uuid = randomId();
     const topicID = `${project_id}:${uuid}`;
+    const topicCid = `topic:${topicID}`;
 
     const queryURL = `${this.getClient().baseURL}/channels/topic/${topicID}`;
     const payload: any = {
@@ -1270,6 +1345,39 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       parent_cid: this.cid,
       data: { ...data },
     };
+
+    // ── E2EE: atomic topic creation ──
+    // If parent is E2EE, or data.mls_enabled is explicitly true,
+    // prepare MLS bundle and include it in the creation request.
+    const parentMlsEnabled = (this as any).data?.mls_enabled || false;
+    const explicitMlsEnabled = data?.mls_enabled === true;
+    const shouldEnableE2ee = parentMlsEnabled || explicitMlsEnabled;
+
+    if (shouldEnableE2ee) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mlsManager = (this._client as any).mlsManager;
+      if (mlsManager?.initialized) {
+        try {
+          // Collect parent member user IDs
+          const parentMembers = this.state?.members || {};
+          const memberIds = Object.keys(parentMembers);
+
+          // Create E2EE topic bundle via MLS manager
+          const bundle = await mlsManager.createE2eeTopic(topicCid, memberIds);
+
+          // Attach MLS fields to the payload for atomic create+enable
+          payload.data.mls_enabled = true;
+          payload.data.commit = bundle.commit;
+          payload.data.welcome = bundle.welcome;
+          payload.data.ratchet_tree = bundle.ratchet_tree;
+          payload.data.group_info = bundle.group_info;
+          payload.data.epoch = bundle.epoch;
+        } catch (err) {
+          console.error('[MLS] createTopic: E2EE bundle preparation failed:', err);
+          // Fall through — create topic without E2EE, user can enable later
+        }
+      }
+    }
 
     const state = await this.getClient().post<QueryChannelAPIResponse<ErmisChatGenerics>>(queryURL + '/query', payload);
 
