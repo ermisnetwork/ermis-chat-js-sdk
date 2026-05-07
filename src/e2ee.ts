@@ -143,6 +143,16 @@ export interface SendE2eeMessageRequest {
   };
 }
 
+export interface UpdateE2eeMessageRequest {
+  message: {
+    /** Encrypted MLS ciphertext from WASM `group.create_message()` */
+    mls_ciphertext: number[];
+    mls_epoch: number;
+    mentioned_all?: boolean;
+    mentioned_users?: string[];
+  };
+}
+
 // ============================================================
 // E2EE API Client
 // ============================================================
@@ -290,6 +300,19 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   ): Promise<APIResponse> {
     return await this._post(
       this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/message`,
+      data,
+    );
+  }
+
+  /** Update an encrypted E2EE message (append-only edit). */
+  async updateMessage(
+    channelType: string,
+    channelId: string,
+    messageId: string,
+    data: UpdateE2eeMessageRequest,
+  ): Promise<APIResponse> {
+    return await this._post(
+      this.baseURL + `/v1/e2ee/channels/${channelType}/${channelId}/${messageId}`,
       data,
     );
   }

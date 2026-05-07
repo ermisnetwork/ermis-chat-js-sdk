@@ -570,6 +570,18 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
           }
           case 'commit':
           case 'external_commit': {
+            const protoDeviceId = protoMsg.device_id;
+            const protoUserId = protoMsg.user?.id;
+            const isOwnDeviceCommit =
+              protoUserId === this.userId &&
+              !!protoDeviceId &&
+              protoDeviceId === this.deviceId;
+            
+            if (isOwnDeviceCommit) {
+              console.log(`[MLS] Skipping own ${typeField} (already merged):`, cid);
+              break;
+            }
+
             // Pre-check: if group epoch already advanced past this commit's epoch,
             // the commit was already applied (e.g. we merged it before last reload).
             // Do NOT call group.process_message() — for ExternalCommit, OpenMLS
@@ -1799,8 +1811,33 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
    * - Decrypted E2eePayload (MessageContent::Standard) — text, attachments, sticker_url, polls
    * - Envelope metadata from WS event — id, cid, user, created_at, parent_id, etc.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  /**
+   * MlsPlaintextCache to deduplicate simultaneous decryption requests for the same message
+   * (e.g. from WS and Sync arriving at the same time).
+   */
+  private _decryptPromises = new Map<string, Promise<Record<string, unknown> | null>>();
+
   async processE2eeMessage(
+    cid: string,
+    message: { id: string; mls_ciphertext?: Uint8Array; user?: { id: string }; created_at?: string;[key: string]: unknown },
+  ): Promise<Record<string, unknown> | null> {
+    if (this._decryptPromises.has(message.id)) {
+      console.log('[MLS] processE2eeMessage: deduplicating concurrent request via MlsPlaintextCache:', message.id);
+      return this._decryptPromises.get(message.id)!;
+    }
+
+    const promise = this._processE2eeMessageInternal(cid, message);
+    this._decryptPromises.set(message.id, promise);
+
+    try {
+      return await promise;
+    } finally {
+      this._decryptPromises.delete(message.id);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async _processE2eeMessageInternal(
     cid: string,
     message: { id: string; mls_ciphertext?: Uint8Array; user?: { id: string }; created_at?: string;[key: string]: unknown },
   ): Promise<Record<string, unknown> | null> {
@@ -1884,28 +1921,89 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       this._decryptedMsgIds.add(message.id);
 
       if (messageType === 0) {
-        // ApplicationMessage — save decrypted Standard content to local DB
-        const storedMsg: E2eeStoredMessage = {
-          id: message.id,
-          cid,
-          content_type: 'mls',
-          // Decrypted Standard content
-          text: payload.text,
-          attachments: payload.attachments,
-          sticker_url: payload.sticker_url,
-          poll_type: payload.poll_type,
-          poll_choice_counts: payload.poll_choice_counts,
-          latest_poll_choices: payload.latest_poll_choices,
-          // Envelope metadata
-          user_id: message.user?.id || '',
-          user: message.user ? { ...message.user } : undefined,
-          created_at: message.created_at || new Date().toISOString(),
-          type: (message as any).type || 'regular',
-          parent_id: (message as any).parent_id,
-          quoted_message_id: (message as any).quoted_message_id,
-          mentioned_users: (message as any).mentioned_users,
-          mentioned_all: (message as any).mentioned_all,
-        };
+        const replacesId = (message as any).replaces_message_id;
+        if (replacesId) {
+          console.log('[MLS] edit message detected:', {
+            cid,
+            edit_id: message.id,
+            replaces_id: replacesId,
+          });
+        }
+        let storedMsg: E2eeStoredMessage;
+
+        if (replacesId) {
+          const originalMsg = await this.storage.loadE2eeMessage(replacesId);
+          if (originalMsg) {
+            const oldTexts = originalMsg.old_texts || [];
+            oldTexts.push({
+              text: originalMsg.text,
+              created_at:
+                originalMsg.updated_at ||
+                originalMsg.created_at ||
+                message.created_at ||
+                new Date().toISOString(),
+            });
+
+            originalMsg.text = payload.text;
+            originalMsg.is_edited = true;
+            originalMsg.updated_at = message.created_at || new Date().toISOString();
+            originalMsg.old_texts = oldTexts;
+            originalMsg.attachments = payload.attachments || originalMsg.attachments;
+            originalMsg.sticker_url = payload.sticker_url || originalMsg.sticker_url;
+            originalMsg.mentioned_users = (message as any).mentioned_users || originalMsg.mentioned_users;
+            originalMsg.mentioned_all = (message as any).mentioned_all !== undefined ? (message as any).mentioned_all : originalMsg.mentioned_all;
+
+            storedMsg = originalMsg;
+          } else {
+            console.warn('[MLS] Original message not found for edit:', replacesId);
+            // Fallback: save as a standalone message but keep the replaces_message_id
+            storedMsg = {
+              id: message.id,
+              cid,
+              content_type: 'mls',
+              text: payload.text,
+              attachments: payload.attachments,
+              sticker_url: payload.sticker_url,
+              poll_type: payload.poll_type,
+              poll_choice_counts: payload.poll_choice_counts,
+              latest_poll_choices: payload.latest_poll_choices,
+              user_id: message.user?.id || '',
+              user: message.user ? { ...message.user } : undefined,
+              created_at: message.created_at || new Date().toISOString(),
+              updated_at: message.created_at || new Date().toISOString(),
+              type: (message as any).type || 'regular',
+              parent_id: (message as any).parent_id,
+              quoted_message_id: (message as any).quoted_message_id,
+              mentioned_users: (message as any).mentioned_users,
+              mentioned_all: (message as any).mentioned_all,
+              replaces_message_id: replacesId,
+            };
+          }
+        } else {
+          // ApplicationMessage — save decrypted Standard content to local DB
+            storedMsg = {
+            id: message.id,
+            cid,
+            content_type: 'mls',
+            // Decrypted Standard content
+            text: payload.text,
+            attachments: payload.attachments,
+            sticker_url: payload.sticker_url,
+            poll_type: payload.poll_type,
+            poll_choice_counts: payload.poll_choice_counts,
+            latest_poll_choices: payload.latest_poll_choices,
+            // Envelope metadata
+            user_id: message.user?.id || '',
+            user: message.user ? { ...message.user } : undefined,
+              created_at: message.created_at || new Date().toISOString(),
+            type: (message as any).type || 'regular',
+            parent_id: (message as any).parent_id,
+            quoted_message_id: (message as any).quoted_message_id,
+            mentioned_users: (message as any).mentioned_users,
+            mentioned_all: (message as any).mentioned_all,
+          };
+        }
+        
         await this.storage.saveE2eeMessage(storedMsg);
 
         // CRITICAL: persist provider state after decrypt — the ratchet key was
@@ -1984,7 +2082,7 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       reaction_counts: envelope.reaction_counts,
       pinned_by: envelope.pinned_by,
       pinned_at: envelope.pinned_at,
-      updated_at: envelope.updated_at,
+      updated_at: stored.updated_at || envelope.updated_at,
     };
   }
 
@@ -2112,6 +2210,130 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     };
   }
 
+  /**
+   * Update an encrypted E2EE message (append-only edit).
+   * The backend will emit message.updated and the edit is reconciled via replaces_message_id.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async updateMessage(
+    channelType: string,
+    channelId: string,
+    cid: string,
+    messageId: string,
+    text: string,
+    options: {
+      mentioned_users?: string[];
+      mentioned_all?: boolean;
+      attachments?: unknown[];
+      sticker_url?: string;
+      poll_type?: string;
+      poll_choice_counts?: Record<string, number>;
+    } = {},
+  ): Promise<any> {
+    console.log('[MLS] updateMessage: encrypting edit', {
+      cid,
+      message_id: messageId,
+    });
+    const payload: E2eePayload = { text };
+    if (options.attachments && options.attachments.length > 0) {
+      payload.attachments = options.attachments;
+    }
+    if (options.sticker_url) {
+      payload.sticker_url = options.sticker_url;
+    }
+    if (options.poll_type) {
+      payload.poll_type = options.poll_type;
+    }
+    if (options.poll_choice_counts) {
+      payload.poll_choice_counts = options.poll_choice_counts;
+    }
+
+    const { attachments: _a, sticker_url: _s, poll_type: _pt, poll_choice_counts: _pc, ...envelopeOptions } = options;
+
+    let ciphertext = this.encryptMessage(cid, payload);
+    let group = this.getGroup(cid)!;
+    let response: any;
+    try {
+      response = await this.e2eeClient!.updateMessage(channelType, channelId, messageId, {
+        message: {
+          mls_ciphertext: Array.from(ciphertext),
+          mls_epoch: Number(group.epoch()),
+          ...envelopeOptions,
+        },
+      });
+      console.log('[MLS] updateMessage: sent', { cid, message_id: messageId });
+    } catch (err) {
+      if (isEpochStaleError(err)) {
+        console.warn('[MLS] updateMessage: epoch_stale — syncing group and retrying...');
+        await this.sync();
+        ciphertext = this.encryptMessage(cid, payload);
+        group = this.getGroup(cid)!;
+        response = await this.e2eeClient!.updateMessage(channelType, channelId, messageId, {
+          message: {
+            mls_ciphertext: Array.from(ciphertext),
+            mls_epoch: Number(group.epoch()),
+            ...envelopeOptions,
+          },
+        });
+      } else {
+        throw err;
+      }
+    }
+
+    // Update local plaintext cache for own-device edits (MLS cannot decrypt self-sent).
+    try {
+      const existing = await this.storage.loadE2eeMessage(messageId);
+      if (existing) {
+        const oldTexts = existing.old_texts || [];
+        oldTexts.push({
+          text: existing.text,
+          created_at: existing.updated_at || existing.created_at || new Date().toISOString(),
+        });
+
+        await this.storage.saveE2eeMessage({
+          ...existing,
+          text,
+          is_edited: true,
+          updated_at: new Date().toISOString(),
+          old_texts: oldTexts,
+          attachments: payload.attachments || existing.attachments,
+          sticker_url: payload.sticker_url || existing.sticker_url,
+          poll_type: payload.poll_type || existing.poll_type,
+          poll_choice_counts: payload.poll_choice_counts || existing.poll_choice_counts,
+          mentioned_users: options.mentioned_users || existing.mentioned_users,
+          mentioned_all:
+            options.mentioned_all !== undefined ? options.mentioned_all : existing.mentioned_all,
+        });
+      } else {
+        await this.storage.saveE2eeMessage({
+          id: messageId,
+          cid,
+          content_type: 'mls',
+          text,
+          attachments: payload.attachments,
+          sticker_url: payload.sticker_url,
+          poll_type: payload.poll_type,
+          poll_choice_counts: payload.poll_choice_counts,
+          user_id: this.userId!,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          type: 'regular',
+          mentioned_users: options.mentioned_users,
+          mentioned_all: options.mentioned_all,
+          is_edited: true,
+          old_texts: [],
+        });
+      }
+    } catch (err) {
+      console.warn('[MLS] updateMessage: failed to update local cache:', messageId, err);
+    }
+
+    // Persist Provider state after encrypting an edit.
+    await this._persistProvider();
+
+    return response;
+  }
+
   // ============================================================
   // Waterfall Decryption
   // ============================================================
@@ -2163,27 +2385,75 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         this._decryptedMsgIds.add(msg.id);
 
         if (messageType === 0) {
-          const decryptedMsg: E2eeStoredMessage = {
-            id: msg.id,
-            cid,
-            content_type: 'mls',
-            // Decrypted Standard content
-            text: payload.text,
-            attachments: payload.attachments,
-            sticker_url: payload.sticker_url,
-            poll_type: payload.poll_type,
-            poll_choice_counts: payload.poll_choice_counts,
-            latest_poll_choices: payload.latest_poll_choices,
-            // Envelope metadata
-            user_id: msg.user?.id || '',
-            user: msg.user ? { ...msg.user } : undefined,
-            created_at: msg.created_at,
-            type: (msg as any).type || 'regular',
-            parent_id: (msg as any).parent_id,
-            quoted_message_id: (msg as any).quoted_message_id,
-            mentioned_users: (msg as any).mentioned_users,
-            mentioned_all: (msg as any).mentioned_all,
-          };
+          const replacesId = (msg as any).replaces_message_id;
+          let decryptedMsg: E2eeStoredMessage;
+
+          if (replacesId) {
+            const originalMsg = await this.storage.loadE2eeMessage(replacesId);
+            if (originalMsg) {
+              const oldTexts = originalMsg.old_texts || [];
+              oldTexts.push({
+                text: originalMsg.text,
+                created_at: originalMsg.updated_at || originalMsg.created_at || msg.created_at,
+              });
+
+              originalMsg.text = payload.text;
+              originalMsg.is_edited = true;
+              originalMsg.updated_at = msg.created_at || new Date().toISOString();
+              originalMsg.old_texts = oldTexts;
+              originalMsg.attachments = payload.attachments || originalMsg.attachments;
+              originalMsg.sticker_url = payload.sticker_url || originalMsg.sticker_url;
+              originalMsg.mentioned_users = (msg as any).mentioned_users || originalMsg.mentioned_users;
+              originalMsg.mentioned_all = (msg as any).mentioned_all !== undefined ? (msg as any).mentioned_all : originalMsg.mentioned_all;
+
+              decryptedMsg = originalMsg;
+            } else {
+              console.warn('[MLS] Original message not found for edit during sync:', replacesId);
+              decryptedMsg = {
+                id: msg.id,
+                cid,
+                content_type: 'mls',
+                text: payload.text,
+                attachments: payload.attachments,
+                sticker_url: payload.sticker_url,
+                poll_type: payload.poll_type,
+                poll_choice_counts: payload.poll_choice_counts,
+                latest_poll_choices: payload.latest_poll_choices,
+                user_id: msg.user?.id || '',
+                user: msg.user ? { ...msg.user } : undefined,
+                created_at: msg.created_at,
+                updated_at: msg.created_at,
+                type: (msg as any).type || 'regular',
+                parent_id: (msg as any).parent_id,
+                quoted_message_id: (msg as any).quoted_message_id,
+                mentioned_users: (msg as any).mentioned_users,
+                mentioned_all: (msg as any).mentioned_all,
+                replaces_message_id: replacesId,
+              };
+            }
+          } else {
+            decryptedMsg = {
+              id: msg.id,
+              cid,
+              content_type: 'mls',
+              // Decrypted Standard content
+              text: payload.text,
+              attachments: payload.attachments,
+              sticker_url: payload.sticker_url,
+              poll_type: payload.poll_type,
+              poll_choice_counts: payload.poll_choice_counts,
+              latest_poll_choices: payload.latest_poll_choices,
+              // Envelope metadata
+              user_id: msg.user?.id || '',
+              user: msg.user ? { ...msg.user } : undefined,
+              created_at: msg.created_at,
+              type: (msg as any).type || 'regular',
+              parent_id: (msg as any).parent_id,
+              quoted_message_id: (msg as any).quoted_message_id,
+              mentioned_users: (msg as any).mentioned_users,
+              mentioned_all: (msg as any).mentioned_all,
+            };
+          }
           await this.storage.saveE2eeMessage(decryptedMsg);
           decrypted.push(decryptedMsg);
         }

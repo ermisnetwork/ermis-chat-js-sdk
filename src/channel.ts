@@ -248,6 +248,15 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
   }
 
   async editMessage(oldMessageID: string, message: EditMessage) {
+    const isE2ee = (this.data as any)?.mls_enabled;
+    const mlsMgr = this.getClient().mlsManager;
+    if (isE2ee && mlsMgr?.initialized) {
+      return await mlsMgr.updateMessage(this.type, this.id, this.cid, oldMessageID, message.text, {
+        mentioned_all: message.mentioned_all,
+        mentioned_users: message.mentioned_users,
+      });
+    }
+
     return await this.getClient().post(this.getClient().baseURL + `/messages/${this.type}/${this.id}/${oldMessageID}`, {
       message,
     });
@@ -2084,18 +2093,16 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
               .processE2eeMessage(this.cid, event.message as any)
               .then((result: Record<string, unknown> | null) => {
                 if (result?.text) {
+                  const decryptedMessage = {
+                    ...event.message,
+                    ...result,
+                    content_type: 'standard',
+                  };
+                  channelState.addMessageSorted(decryptedMessage as any, false, false);
                   // Decrypt success — dispatch plaintext to UI
                   this.getClient().dispatchEvent({
                     type: 'e2ee.message_decrypted' as any,
-                    message: {
-                      id: event.message!.id,
-                      text: result.text,
-                      e2ee_status: null,
-                      user_id: result.user_id || event.user?.id,
-                      attachments: result.attachments,
-                      sticker_url: result.sticker_url,
-                      content_type: 'standard',
-                    },
+                    message: decryptedMessage,
                     cid: this.cid,
                   } as any);
                 } else {
@@ -2148,6 +2155,13 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
       case 'message.updated':
         // case 'message.undeleted':
         if (event.message) {
+          console.log('[WS] message.updated:', {
+            cid: this.cid,
+            id: event.message.id,
+            replaces_message_id: (event.message as any).replaces_message_id,
+            content_type: event.message.content_type,
+            has_ciphertext: !!event.message.mls_ciphertext,
+          });
           const userEvent = getUserInfo(event.user?.id || '', users);
           const userMsg = getUserInfo(event.message.user?.id || '', users);
           event.user = userEvent;
@@ -2160,6 +2174,58 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
 
           if (event.message?.latest_reactions) {
             event.message.latest_reactions = enrichWithUserInfo(event.message.latest_reactions || [], users);
+          }
+
+          // E2EE Edit Handling
+          const mlsMgr = this.getClient().mlsManager;
+          const ownMessage = event.user?.id === this.getClient().user?.id;
+          const isOwnDeviceMessage = ownMessage && (
+            !mlsMgr?.deviceId ||
+            event.message.device_id === mlsMgr.deviceId
+          );
+
+          if (
+            !isOwnDeviceMessage &&
+            mlsMgr?.initialized &&
+            event.message.content_type === 'mls' &&
+            event.message.mls_ciphertext &&
+            this.cid
+          ) {
+            mlsMgr
+              .processE2eeMessage(this.cid, event.message as any)
+              .then((result: Record<string, unknown> | null) => {
+                if (result?.text) {
+                  // result contains the ORIGINAL message id and updated fields
+                  const decryptedMessage = {
+                    ...result,
+                    content_type: 'standard',
+                  };
+                  channelState.addMessageSorted(decryptedMessage as any, false, false);
+                  // Decrypt success — dispatch plaintext to UI
+                  this.getClient().dispatchEvent({
+                    type: 'e2ee.message_decrypted' as any,
+                    message: decryptedMessage,
+                    cid: this.cid,
+                  } as any);
+                } else {
+                  // Decrypt failed
+                  this.getClient().dispatchEvent({
+                    type: 'e2ee.message_decrypted' as any,
+                    message: {
+                      id: event.message!.id,
+                      e2ee_status: 'failed',
+                      text: '',
+                    },
+                    cid: this.cid,
+                  } as any);
+                }
+              })
+              .catch((err: unknown) => {
+                console.error('[E2EE] Failed to decrypt updated message:', this.cid, err);
+              });
+
+            // CRITICAL: Do NOT add the encrypted edit message carrier to channelState!
+            break;
           }
 
           this._extendEventWithOwnReactions(event);
@@ -2636,8 +2702,19 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             break;
           }
           case 'commit': {
-            // Regular commits from own device already merged locally → will fail with
-            // epoch mismatch, caught gracefully in processCommit.
+            // Regular commits from own device already merged locally.
+            // Skip them here so we don't pass them to OpenMLS which would throw
+            // an error (e.g. "Cannot process a message authored by yourself") and trigger a recovery sync.
+            const protoDeviceId = protoMsg.device_id;
+            const isOwnDeviceCommit =
+              protoUserId === mlsMgrProto.userId &&
+              !!protoDeviceId &&
+              protoDeviceId === mlsMgrProto.deviceId;
+            if (isOwnDeviceCommit) {
+              console.log('[MLS Event] Skipping own commit (already merged):', this.cid);
+              break;
+            }
+
             mlsMgrProto
               .processCommit(this.cid!, protoMsg.commit, protoMsg.epoch)
               .then(() => {

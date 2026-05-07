@@ -29,7 +29,7 @@ export interface E2eeStoredMessage {
   /** Message type: 'regular' | 'reply' | 'system' etc. */
   type: string;
   created_at: string;
-
+  updated_at?: string;
   // Sender
   user_id: string;
   user?: { id: string; name?: string; image?: string; [key: string]: unknown };
@@ -41,6 +41,8 @@ export interface E2eeStoredMessage {
   poll_type?: string;
   poll_choice_counts?: Record<string, number>;
   latest_poll_choices?: unknown[];
+  is_edited?: boolean;
+  old_texts?: Array<{ text: string; created_at: string }>;
 
   // Thread / reply routing
   parent_id?: string;
