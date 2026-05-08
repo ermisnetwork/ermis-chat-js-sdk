@@ -83,6 +83,7 @@ export interface MlsStorageAdapter {
   // ---- E2EE Messages ----
   saveE2eeMessage(message: E2eeStoredMessage): Promise<void>;
   loadE2eeMessage(messageId: string): Promise<E2eeStoredMessage | null>;
+  deleteE2eeMessage(messageId: string): Promise<void>;
   getE2eeMessages(cid: string, limit?: number): Promise<E2eeStoredMessage[]>;
   clearE2eeMessages(cid: string): Promise<void>;
 
@@ -350,6 +351,27 @@ export class IndexedDBMlsStorage implements MlsStorageAdapter {
       const request = store.get(messageId);
       request.onsuccess = () => resolve((request.result as E2eeStoredMessage) || null);
       request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteE2eeMessage(messageId: string): Promise<void> {
+    const db = await this.openDB();
+    return new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_MESSAGES, 'readwrite');
+      const store = tx.objectStore(STORE_MESSAGES);
+      store.delete(messageId);
+      tx.oncomplete = () => {
+        if (this._searchIndex && this._indexReady) {
+          try {
+            this._searchIndex.discard(messageId);
+          } catch (_) {
+            // Ignore missing records in index
+          }
+          this._indexedIds.delete(messageId);
+        }
+        resolve();
+      };
+      tx.onerror = () => reject(tx.error);
     });
   }
 

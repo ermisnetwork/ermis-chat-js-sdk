@@ -2041,6 +2041,16 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
               channelState.read[userId] = { ...channelState.read[userId], last_read_message_id: undefined };
             }
           }
+
+          const mlsMgr = this.getClient().mlsManager;
+          const isE2ee = (this.data as any)?.mls_enabled;
+          if (isE2ee && mlsMgr?.initialized && event.message.id) {
+            try {
+              await mlsMgr.storage.deleteE2eeMessage(event.message.id);
+            } catch (err) {
+              console.warn('[MLS] Failed to delete message from local DB:', event.message.id, err);
+            }
+          }
         }
         break;
       case 'message.new':
