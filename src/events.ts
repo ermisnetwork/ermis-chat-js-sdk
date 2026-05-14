@@ -35,6 +35,7 @@ export const EVENT_MAP = {
   'notification.invite_accepted': true,
   'notification.invite_rejected': true,
   'notification.invite_messaging_skipped': true,
+  'notification.invite_messaging_rejected': true,
   'notification.invited': true,
   'notification.mark_read': true,
   'notification.mark_unread': true,

@@ -638,35 +638,27 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
             mentioned_users: msg.mentioned_users,
           });
 
-          // ── Offline recovery: MemberLeaved (SystemMessage type 12) ──
-          // When A/B were offline while C self-left, they missed the member.removed WS event.
-          // On sync, they see this system message → designated evictor removes C's leaf nodes.
-          // Only owner/admin (isDesignatedEvictor) triggers eviction to avoid races.
+          // ── Offline recovery: Self-remove (SystemMessage types 11, 12, 21) ──
+          // When A/B were offline while C self-left or rejected invite, they missed the WS event.
+          // On sync, ALL clients queue ghost evictions (not just designated evictor).
+          // This ensures that when any client performs a commit action (add, remove,
+          // key rotate), _drainPendingGhosts or atomic remove_users will handle ghost cleanup.
+          // 11: InviteRejected, 12: MemberLeaved, 21: InviteMessagingRejected
           const msgText: string = msg.text || '';
           if (
             (msg.message_type === 'system' || msg.type === 'system') &&
-            msgText.startsWith('12 ')
+            (msgText.startsWith('12 ') || msgText.startsWith('11 ') || msgText.startsWith('21 '))
           ) {
             const leftUserId = msgText.split(' ')[1];
             if (leftUserId && leftUserId !== this.userId) {
               const group = this.groups.get(cid);
               if (group) {
                 // Check C still has leaf nodes (another evictor may have already removed them)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const colonIdx = cid.indexOf(':');
-                const channelType = cid.substring(0, colonIdx);
-                const channelId = cid.substring(colonIdx + 1);
                 try {
                   const leafNodes = group.members_by_user_id(leftUserId);
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const activeChannel = (this.client as any)?.activeChannels?.[cid];
-                  if (
-                    leafNodes && leafNodes.length > 0 &&
-                    activeChannel &&
-                    this.isDesignatedEvictor(activeChannel)
-                  ) {
+                  if (leafNodes && leafNodes.length > 0) {
                     // Queue the eviction — will be drained after sync loop finishes
-                    // so the epoch is fully advanced before we create a commit.
+                    // or bundled into the next commit action (add/remove/rotate).
                     const queue = this._pendingEvictions.get(cid) ?? new Set<string>();
                     queue.add(leftUserId);
                     this._pendingEvictions.set(cid, queue);
@@ -720,6 +712,90 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         } catch (err) {
           console.warn('[MLS] Failed to update reactions in storage:', messageId, err);
         }
+      } else if (eventType === 'message_deleted') {
+        // Message deleted event from offline sync — remove message from local state
+        const deleteData = event.data;
+        const deletedMessageId = deleteData?.message_id;
+        if (!deletedMessageId) continue;
+
+        // 1. Remove from in-memory channel state
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const activeChannel = (this.client as any)?.activeChannels?.[cid];
+        if (activeChannel?.state) {
+          activeChannel.state.removeMessage({ id: deletedMessageId });
+          // Also remove from pinned messages if applicable
+          activeChannel.state.removePinnedMessage({ id: deletedMessageId });
+        }
+
+        // 2. Remove from local IndexedDB storage
+        try {
+          await this.storage.deleteE2eeMessage(deletedMessageId);
+        } catch (err) {
+          console.warn('[MLS] Failed to delete message from storage during sync:', deletedMessageId, err);
+        }
+
+        // 3. Dispatch event for UI re-render
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.client as any)?.dispatchEvent?.({
+          type: 'message.deleted' as any,
+          message: { id: deletedMessageId },
+          cid,
+        });
+
+        console.log('[MLS] Sync: message deleted:', deletedMessageId);
+      } else if (eventType === 'message_updated') {
+        // Message updated event from offline sync — update message in local state
+        const updateData = event.data;
+        const updatedMessage = updateData?.message;
+        if (!updatedMessage) continue;
+
+        // 1. Update in-memory channel state
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const activeChannel = (this.client as any)?.activeChannels?.[cid];
+        if (activeChannel?.state) {
+          activeChannel.state.addMessageSorted(updatedMessage, false, false);
+        }
+
+        // 2. Update local storage
+        try {
+          const existingMsg = await this.storage.loadE2eeMessage(updatedMessage.id);
+          if (existingMsg) {
+            await this.storage.saveE2eeMessage({
+              ...existingMsg,
+              text: updatedMessage.text ?? existingMsg.text,
+              updated_at: updateData.created_at,
+            });
+          }
+        } catch (err) {
+          console.warn('[MLS] Failed to update message in storage during sync:', updatedMessage.id, err);
+        }
+
+        // 3. Dispatch event for UI re-render
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.client as any)?.dispatchEvent?.({
+          type: 'message.updated' as any,
+          message: updatedMessage,
+          cid,
+        });
+
+        console.log('[MLS] Sync: message updated:', updatedMessage.id);
+      } else if (eventType === 'message_pin') {
+        // Pin/unpin event from offline sync — update pinned messages list
+        const pinData = event.data;
+        const pinnedMessage = pinData?.message;
+        if (!pinnedMessage) continue;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const activeChannel = (this.client as any)?.activeChannels?.[cid];
+        if (activeChannel?.state) {
+          if (pinData.action === 'message.pinned') {
+            activeChannel.state.addPinnedMessage(pinnedMessage);
+          } else {
+            activeChannel.state.removePinnedMessage(pinnedMessage);
+          }
+        }
+
+        console.log('[MLS] Sync: message', pinData.action, ':', pinnedMessage.id);
       }
     }
 
@@ -1127,6 +1203,104 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
   /**
    * Batch add multiple users to an E2EE channel.
+  /**
+   * Drain pending ghost evictions for a CID using an atomic remove_users() commit.
+   *
+   * IMPORTANT: Uses remove_users() (atomic, includes proposals BY VALUE) instead of
+   * propose_remove_user() + commit_pending_proposals() which includes proposals BY REFERENCE.
+   * Proposals by reference fail on receivers who never got the standalone proposal message.
+   *
+   * If there are ghosts to drain, this creates a SEPARATE commit (advances epoch by 1),
+   * sends it to the server, and merges locally. The caller then proceeds with its
+   * main action (add/remove/rotate) as a second commit.
+   *
+   * @returns list of ghost user_ids that were successfully drained
+   */
+  private async _drainPendingGhosts(
+    cid: string,
+    channelType: string,
+    channelId: string,
+  ): Promise<string[]> {
+    const group = this.groups.get(cid);
+    if (!group) return [];
+
+    // 1. Gather pending evictions from Local Queue
+    const pending = this._pendingEvictions.get(cid) || new Set<string>();
+    const ghostsToEvict: string[] = [];
+    for (const userId of pending) {
+      try {
+        const leafNodes = group.members_by_user_id(userId);
+        if (leafNodes && leafNodes.length > 0) {
+          ghostsToEvict.push(userId);
+        }
+      } catch (_err) { /* ignore */ }
+    }
+
+    if (ghostsToEvict.length === 0) return [];
+
+    // 2. Atomic remove_users — includes proposals BY VALUE in the commit
+    console.log('[MLS] Draining', ghostsToEvict.length, 'pending ghosts from', cid, ':', ghostsToEvict);
+    const drainBundle = group.remove_users(this.provider, this.identity, ghostsToEvict);
+
+    // 3. Validate group_info
+    const groupInfoBytes = drainBundle.group_info;
+    if (!groupInfoBytes || groupInfoBytes.length === 0) {
+      group.clear_pending_commit(this.provider);
+      await this._persistProvider();
+      throw new Error('[MLS] _drainPendingGhosts: drainBundle.group_info is empty');
+    }
+
+    // 4. Send drain commit to server via commit_eviction endpoint
+    //    (ghosts already left the channel — use MLS-only endpoint)
+    try {
+      if (!this.e2eeClient) throw new Error('[MLS] e2eeClient not initialized');
+      await this.e2eeClient.commitEviction(channelType, channelId, {
+        target_user_id: ghostsToEvict[0], // Primary target for logging
+        commit: Array.from(drainBundle.commit),
+        epoch: Number(group.epoch()),
+        group_info: Array.from(groupInfoBytes),
+      });
+    } catch (err) {
+      // On any error, clear pending commit and let the caller proceed without draining.
+      // The ghosts stay in queue and will be retried next time.
+      console.warn('[MLS] _drainPendingGhosts: server rejected drain commit, skipping:', err);
+      group.clear_pending_commit(this.provider);
+      await this._persistProvider();
+      return [];
+    }
+
+    // 5. Server OK → merge + cleanup queue
+    group.merge_pending_commit(this.provider);
+    await this._persistProvider();
+    await this._cleanupEvictedGhosts(cid, ghostsToEvict);
+
+    console.log('[MLS] Drained ghosts from', cid, 'new epoch:', Number(group.epoch()));
+    return ghostsToEvict;
+  }
+
+  /**
+   * Remove successfully evicted ghosts from the pending queue.
+   * Called AFTER server confirms and merge_pending_commit succeeds.
+   */
+  private async _cleanupEvictedGhosts(cid: string, ghostsEvicted: string[]): Promise<void> {
+    if (ghostsEvicted.length === 0) return;
+    const pending = this._pendingEvictions.get(cid);
+    if (!pending) return;
+    for (const userId of ghostsEvicted) {
+      pending.delete(userId);
+      await this._removePendingEviction(cid, userId);
+    }
+    if (pending.size === 0) this._pendingEvictions.delete(cid);
+    await this._persistPendingEvictions();
+    console.log('[MLS] Cleaned up evicted ghosts:', ghostsEvicted, 'from', cid);
+  }
+
+  /**
+   * Add members to an E2EE channel.
+   * If any of the new users are in the pending eviction queue (ghosts),
+   * they are evicted first and then re-added in the SAME commit.
+   *
+   * @param newUserIds - IDs of users to add
    */
   async addMembers(
     channelType: string,
@@ -1145,10 +1319,11 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     const allKeyPackages: any[] = [];
     for (const member of members) {
       for (const kpData of member.key_packages) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const kp = wasmModule.KeyPackage.from_bytes(
           new Uint8Array(kpData.key_package),
         );
-        allKeyPackages.push(kp);
+        allKeyPackages.push({ userId: member.user_id, kp });
       }
     }
 
@@ -1156,12 +1331,42 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       throw new Error('[MLS] No key packages available for any target user');
     }
 
-    // 3. Batch add → 1 commit + 1 welcome
-    const commitBundle = group.add_members(
-      this.provider,
-      this.identity,
-      allKeyPackages,
-    );
+    // 3. Phase 1: Drain pending ghosts (separate commit if needed)
+    const colonIdx2 = cid.indexOf(':');
+    await this._drainPendingGhosts(cid, cid.substring(0, colonIdx2), cid.substring(colonIdx2 + 1));
+
+    // 4. Phase 2: Handle ghost re-adds — if a NEW user is still a ghost in the tree, evict first
+    const ghostReaddIds: string[] = [];
+    for (const { userId } of allKeyPackages) {
+      try {
+        const leafNodes = group.members_by_user_id(userId);
+        if (leafNodes && leafNodes.length > 0) {
+          ghostReaddIds.push(userId);
+        }
+      } catch (_err) { /* ignore */ }
+    }
+    if (ghostReaddIds.length > 0) {
+      console.log('[MLS] addMembers: evicting ghost re-adds first:', ghostReaddIds);
+      const readdDrain = group.remove_users(this.provider, this.identity, ghostReaddIds);
+      const readdGI = readdDrain.group_info;
+      if (!readdGI || readdGI.length === 0) {
+        group.clear_pending_commit(this.provider);
+        await this._persistProvider();
+        throw new Error('[MLS] addMembers: ghost re-add drain has no group_info');
+      }
+      await this.e2eeClient!.commitEviction(channelType, channelId, {
+        target_user_id: ghostReaddIds[0],
+        commit: Array.from(readdDrain.commit),
+        epoch: Number(group.epoch()),
+        group_info: Array.from(readdGI),
+      });
+      group.merge_pending_commit(this.provider);
+      await this._persistProvider();
+    }
+
+    // 5. Phase 3: Atomic add_members — includes proposals BY VALUE
+    const kpArray = allKeyPackages.map(({ kp }) => kp);
+    const commitBundle = group.add_members(this.provider, this.identity, kpArray);
 
     // 4. Export ratchet tree BEFORE merge (need pre-merge state for welcome)
     const ratchetTree = group.export_ratchet_tree();
@@ -1205,7 +1410,7 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       throw err;
     }
 
-    // 6. Server OK → merge pending commit locally
+    // Server OK → merge pending commit locally
     group.merge_pending_commit(this.provider);
     await this._persistProvider();
 
@@ -1243,15 +1448,10 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
       for (const userId of userIds) {
         // ── Pre-flight: check if user still has leaf nodes in the ratchet tree ──
-        // Scenario: A queued evict(C) but failed, then B evicted C successfully.
-        // A comes back online, processCommit(B's commit) removes C from tree,
-        // then drain sees pendingEvictions still has C.
-        // Without this check, remove_users([C]) would fail (no leaves to remove).
         if (group) {
           try {
             const leafNodes = group.members_by_user_id(userId);
             if (!leafNodes || leafNodes.length === 0) {
-              // C already removed from ratchet tree (by another evictor's commit)
               console.log('[MLS] _drainPendingEvictions: skip', userId, '— already evicted from', cid);
               await this._removePendingEviction(cid, userId);
               continue;
@@ -1274,7 +1474,6 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
           const requeue = this._pendingEvictions.get(cid) ?? new Set<string>();
           requeue.add(userId);
           this._pendingEvictions.set(cid, requeue);
-          // Storage already has this entry — no need to re-persist
         }
       }
     }
@@ -1409,11 +1608,27 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
     console.log('[MLS] Evicting member:', targetUserId, 'from:', cid, '(selfLeft:', selfLeft, ')');
 
-    // 1. WASM: remove_users → commitBundle (includes commit + group_info)
+    // 1. Collect all user_ids to remove: target + pending ghosts
+    //    Combine into ONE atomic remove_users() call (proposals by value).
+    const allRemoveIds: string[] = [targetUserId];
+    const pending = this._pendingEvictions.get(cid) || new Set<string>();
+    for (const ghostId of pending) {
+      if (ghostId === targetUserId) continue; // already included
+      try {
+        const leafNodes = group.members_by_user_id(ghostId);
+        if (leafNodes && leafNodes.length > 0) {
+          allRemoveIds.push(ghostId);
+        }
+      } catch (_err) { /* ignore */ }
+    }
+    if (allRemoveIds.length > 1) {
+      console.log('[MLS] evictMember: bundling', allRemoveIds.length - 1, 'ghosts with target eviction');
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let commitBundle: any;
     try {
-      commitBundle = group.remove_users(this.provider, this.identity, [targetUserId]);
+      commitBundle = group.remove_users(this.provider, this.identity, allRemoveIds);
     } catch (err) {
       console.error('[MLS] evictMember: WASM remove_users failed:', err);
       throw err;
@@ -1471,6 +1686,9 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     // 4. Server OK → merge
     group.merge_pending_commit(this.provider);
     await this._persistProvider();
+    // 5. Queue cleanup AFTER confirmed merge (ghosts that were bundled)
+    const ghostsEvicted = allRemoveIds.filter(id => id !== targetUserId);
+    await this._cleanupEvictedGhosts(cid, ghostsEvicted);
     console.log('[MLS] Evicted', targetUserId, 'from:', cid, 'epoch:', Number(group.epoch()));
   }
 
@@ -1548,8 +1766,11 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   /**
    * Key rotation: rotate own key material for forward secrecy.
    *
-   * Calls WASM self_update() → sends commit to server → merges pending commit.
-   * All other members receive the commit via WS and advance their epoch.
+   * 2-phase approach:
+   * Phase 1: Drain pending ghost evictions via _drainPendingGhosts (separate commit)
+   * Phase 2: Atomic self_update() for key rotation (includes proposals BY VALUE)
+   *
+   * All other members receive the commit(s) via WS and advance their epoch.
    */
   async keyRotation(cid: string, isRetry = false): Promise<{ epoch: number }> {
     if (!this.initialized) throw new Error('[MLS] Not initialized');
@@ -1563,10 +1784,13 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     const channelType = cid.substring(0, colonIdx);
     const channelId = cid.substring(colonIdx + 1);
 
-    // 1. WASM: self_update → produces CommitBundle (commit + optional welcome)
+    // 1. Phase 1: Drain pending ghosts (separate commit if needed)
+    await this._drainPendingGhosts(cid, channelType, channelId);
+
+    // 2. Phase 2: Atomic self_update — includes proposals BY VALUE
     const bundle = group.self_update(this.provider, this.identity);
 
-    // 2. Get group_info from bundle (post-commit epoch N+1 state)
+    // 3. Get group_info from bundle (post-commit epoch N+1 state)
     const groupInfoBytes = bundle.group_info;
     if (!groupInfoBytes || groupInfoBytes.length === 0) {
       group.clear_pending_commit(this.provider);
@@ -1575,7 +1799,7 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     }
     const groupInfoForRequest = Array.from(groupInfoBytes as Uint8Array);
 
-    // 3. Send commit to server FIRST
+    // 4. Send commit to server FIRST
     try {
       await this.e2eeClient!.keyRotation(channelType, channelId, {
         commit: Array.from(bundle.commit),
@@ -1597,10 +1821,10 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       throw err;
     }
 
-    // 4. Server OK → merge pending commit locally → advances epoch
+    // 5. Server OK → merge pending commit locally → advances epoch
     group.merge_pending_commit(this.provider);
 
-    // 5. Persist state
+    // 6. Persist state
     await this._saveGroup(cid);
     await this._persistProvider();
 
@@ -1787,6 +2011,28 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
       console.log('[MLS] Commit processed for:', cid, 'epoch:', Number(group.epoch()));
       await this._persistProvider();
+
+      // Post-commit queue hygiene: remove users that were evicted by this commit.
+      // When another admin's commit removes a ghost, our local queue still has
+      // the stale entry. Clean it now so we don't attempt a redundant eviction.
+      const pending = this._pendingEvictions.get(cid);
+      if (pending && pending.size > 0) {
+        let cleaned = false;
+        for (const uid of [...pending]) {
+          try {
+            const leaves = group.members_by_user_id(uid);
+            if (!leaves || leaves.length === 0) {
+              pending.delete(uid);
+              cleaned = true;
+            }
+          } catch (_err) { /* ignore */ }
+        }
+        if (cleaned) {
+          if (pending.size === 0) this._pendingEvictions.delete(cid);
+          this._persistPendingEvictions().catch(console.warn);
+        }
+      }
+
       return processed;
     } catch (err) {
       const errMsg = (err as Error).message || '';
@@ -1795,6 +2041,29 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         console.warn('[MLS] processCommit: commit already applied (epoch mismatch), skipping:', cid);
         return null;
       }
+
+      // Recovery: "missing proposal" means the commit references proposals by reference
+      // that we never received (legacy bug from propose_*() + commit_pending_proposals()).
+      // The only recovery is to discard the broken group and external-join at the latest epoch.
+      if (errMsg.includes('missing a proposal')) {
+        console.warn('[MLS] processCommit: missing proposal — triggering external join recovery for', cid);
+        // Restore provider from snapshot (undo any partial state)
+        this.provider = wasmModule.Provider.from_bytes(new Uint8Array(snapshot));
+        // Delete the broken group
+        this.groups.delete(cid);
+        await this._persistProvider();
+        // Schedule external join (async, don't block sync loop)
+        const colonIdx = cid.indexOf(':');
+        if (colonIdx > 0) {
+          const channelType = cid.substring(0, colonIdx);
+          const channelId = cid.substring(colonIdx + 1);
+          this.joinExternal(channelType, channelId, cid)
+            .then(() => console.log('[MLS] External join recovery succeeded for', cid))
+            .catch((joinErr) => console.error('[MLS] External join recovery failed for', cid, joinErr));
+        }
+        return null;
+      }
+
       // ROLLBACK: restore Provider from snapshot (commits modify Provider via as_mut)
       console.warn('[MLS] processCommit failed, rolling back Provider state:', errMsg);
       this.provider = wasmModule.Provider.from_bytes(new Uint8Array(snapshot));

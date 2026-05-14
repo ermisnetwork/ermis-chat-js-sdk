@@ -2320,6 +2320,13 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             // Own devices received member.removed → cleanup local MLS group
             if (mlsMgrRemoved?.initialized && this.cid) {
               mlsMgrRemoved.leaveGroup(this.cid);
+
+              // Also cleanup for topics if present
+              if (Array.isArray(event.topic_cids)) {
+                for (const topicCid of event.topic_cids) {
+                  mlsMgrRemoved.leaveGroup(topicCid);
+                }
+              }
             }
           } else if (
             event.mls_enabled &&
@@ -2329,11 +2336,26 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           ) {
             // Designated evictor (owner/moder) removes the leaver's leaf nodes via MLS-only commit.
             // selfLeft=true → use POST /commit_eviction (no channel DB membership check).
+            // 1. Main channel eviction
             mlsMgrRemoved
               .evictMember(this.type, this.id!, this.cid, removedUserId, true)
               .catch((err: unknown) => {
                 console.error('[MLS Event] evictMember after member.removed failed:', this.cid, removedUserId, err);
               });
+
+            // 2. Topic evictions
+            if (Array.isArray(event.topic_cids)) {
+              for (const topicCid of event.topic_cids) {
+                const colonIdx = topicCid.indexOf(':');
+                const tType = topicCid.substring(0, colonIdx);
+                const tId = topicCid.substring(colonIdx + 1);
+                mlsMgrRemoved
+                  .evictMember(tType, tId, topicCid, removedUserId, true)
+                  .catch((err: unknown) => {
+                    console.error('[MLS Event] evictMember (topic) after member.removed failed:', topicCid, removedUserId, err);
+                  });
+              }
+            }
           }
         }
         break;
@@ -2554,6 +2576,7 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
         }
         break;
       case 'notification.invite_rejected':
+      case 'notification.invite_messaging_rejected':
         if (event.member?.user_id) {
           delete channelState.members[event.member.user_id];
 
@@ -2567,11 +2590,26 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             mlsMgrReject.isDesignatedEvictor(channel)
           ) {
             const targetUserIdReject = event.member.user_id;
+            // Evict from main channel
             mlsMgrReject
               .evictMember(this.type, this.id!, this.cid, targetUserIdReject)
               .catch((err: unknown) => {
                 console.error('[MLS Event] Failed to evictMember after invite_rejected:', this.cid, targetUserIdReject, err);
               });
+            
+            // Evict from topics if present
+            if (Array.isArray(event.topic_cids)) {
+              for (const topicCid of event.topic_cids) {
+                const colonIdx = topicCid.indexOf(':');
+                const tType = topicCid.substring(0, colonIdx);
+                const tId = topicCid.substring(colonIdx + 1);
+                mlsMgrReject
+                  .evictMember(tType, tId, topicCid, targetUserIdReject)
+                  .catch((err: unknown) => {
+                    console.error('[MLS Event] Failed to evictMember (topic) after invite_rejected:', topicCid, targetUserIdReject, err);
+                  });
+              }
+            }
           }
         }
         break;
