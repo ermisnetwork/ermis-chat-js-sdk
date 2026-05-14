@@ -2397,12 +2397,13 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           if (mlsMgr?.initialized && channelData?.mls_enabled && channelData?.mls_enabled_at) {
             const cid = this.cid;
             if (cid) {
-              mlsMgr.syncNewChannel(
+              mlsMgr.ensureChannelReady(
                 this.type,
                 this.id,
                 cid,
+                { source: 'channel_updated' },
               ).catch((err: unknown) => {
-                console.error('[MLS Event] Failed to sync after channel.updated:', cid, err);
+                console.error('[MLS Event] Failed to ensure channel after channel.updated:', cid, err);
               });
             }
           }
@@ -2568,9 +2569,9 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
             this.cid
           ) {
             mlsMgrAccept
-              .syncNewChannel(this.type, this.id!, this.cid)
+              .ensureChannelReady(this.type, this.id!, this.cid, { source: 'invite_accepted' })
               .catch((err: unknown) => {
-                console.error('[MLS Event] Failed to syncNewChannel after invite_accepted:', this.cid, err);
+                console.error('[MLS Event] Failed to ensure channel after invite_accepted:', this.cid, err);
               });
           }
         }

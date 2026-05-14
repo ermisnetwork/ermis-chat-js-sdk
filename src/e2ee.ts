@@ -92,6 +92,15 @@ export interface UploadGroupInfoRequest {
 export interface GetGroupInfoResponse extends APIResponse {
   group_info: number[];
   epoch: number;
+  /** true if stored GroupInfo is older than channel.mls_epoch. */
+  is_stale?: boolean;
+  channel?: unknown;
+  messages?: unknown[];
+  pinned_messages?: unknown[];
+  watchers?: unknown[];
+  read?: unknown[];
+  membership?: unknown;
+  is_pinned?: boolean;
 }
 
 export interface ExternalJoinRequest {
@@ -567,4 +576,3 @@ export interface BatchTopicResult {
 export interface BatchTopicResponse extends APIResponse {
   results: BatchTopicResult[];
 }
-
