@@ -313,7 +313,7 @@ export class E2eeClient<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     );
   }
 
-  /** Update an encrypted E2EE message (append-only edit). */
+  /** Update an encrypted E2EE message snapshot. */
   async updateMessage(
     channelType: string,
     channelId: string,

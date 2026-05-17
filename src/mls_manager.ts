@@ -73,6 +73,8 @@ export interface E2eePayload {
   poll_choice_counts?: Record<string, number>;
   /** Latest poll choices */
   latest_poll_choices?: unknown[];
+  /** E2EE edit history, encrypted inside the latest message snapshot */
+  old_texts?: Array<{ text: string; created_at: string }>;
 }
 
 export interface DecryptResult {
@@ -902,37 +904,49 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
         console.log('[MLS] Sync: message deleted:', deletedMessageId);
       } else if (eventType === 'message_updated') {
-        // Message updated event from offline sync — update message in local state
+        // Message updated event from offline sync. E2EE updates carry the latest
+        // encrypted snapshot for the same message id.
         const updateData = event.data;
         const updatedMessage = updateData?.message;
         if (!updatedMessage) continue;
+
+        let messageForState = updatedMessage;
+
+        try {
+          if (updatedMessage.content_type === 'mls' && updatedMessage.mls_ciphertext) {
+            const { decrypted } = await this.decryptApplicationMessages(cid, [{
+              ...updatedMessage,
+              updated_at: updatedMessage.updated_at || updateData.created_at,
+            }]);
+            if (decrypted[0]) {
+              messageForState = this._buildFullMessage(decrypted[0], updatedMessage);
+            }
+          } else {
+            const existingMsg = await this.storage.loadE2eeMessage(updatedMessage.id);
+            if (existingMsg) {
+              await this.storage.saveE2eeMessage({
+                ...existingMsg,
+                text: updatedMessage.text ?? existingMsg.text,
+                updated_at: updateData.created_at,
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('[MLS] Failed to update message in storage during sync:', updatedMessage.id, err);
+        }
 
         // 1. Update in-memory channel state
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const activeChannel = (this.client as any)?.activeChannels?.[cid];
         if (activeChannel?.state) {
-          activeChannel.state.addMessageSorted(updatedMessage, false, false);
-        }
-
-        // 2. Update local storage
-        try {
-          const existingMsg = await this.storage.loadE2eeMessage(updatedMessage.id);
-          if (existingMsg) {
-            await this.storage.saveE2eeMessage({
-              ...existingMsg,
-              text: updatedMessage.text ?? existingMsg.text,
-              updated_at: updateData.created_at,
-            });
-          }
-        } catch (err) {
-          console.warn('[MLS] Failed to update message in storage during sync:', updatedMessage.id, err);
+          activeChannel.state.addMessageSorted(messageForState, false, false);
         }
 
         // 3. Dispatch event for UI re-render
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (this.client as any)?.dispatchEvent?.({
           type: 'message.updated' as any,
-          message: updatedMessage,
+          message: messageForState,
           cid,
         });
 
@@ -2404,22 +2418,69 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
    */
   private _decryptPromises = new Map<string, Promise<Record<string, unknown> | null>>();
 
+  private _messageVersionKey(message: { id: string; created_at?: string; updated_at?: string; mls_epoch?: number;[key: string]: unknown }): string {
+    const version = message.updated_at || message.created_at || '';
+    return `${message.id}:${version}:${message.mls_epoch ?? ''}`;
+  }
+
+  private _storedMessageCoversVersion(
+    stored: E2eeStoredMessage,
+    message: { created_at?: string; updated_at?: string;[key: string]: unknown },
+  ): boolean {
+    const incomingUpdatedAt = message.updated_at;
+    if (!incomingUpdatedAt) return true;
+    const storedUpdatedAt = stored.updated_at || stored.created_at;
+    return new Date(storedUpdatedAt).getTime() >= new Date(incomingUpdatedAt).getTime();
+  }
+
+  private _storedFromPayload(
+    cid: string,
+    payload: E2eePayload,
+    envelope: { id: string; user?: { id: string }; created_at?: string; updated_at?: string;[key: string]: unknown },
+    fallback?: E2eeStoredMessage | null,
+  ): E2eeStoredMessage {
+    return {
+      id: envelope.id,
+      cid,
+      content_type: 'mls',
+      text: payload.text,
+      attachments: payload.attachments || fallback?.attachments,
+      sticker_url: payload.sticker_url || fallback?.sticker_url,
+      poll_type: payload.poll_type || fallback?.poll_type,
+      poll_choice_counts: payload.poll_choice_counts || fallback?.poll_choice_counts,
+      latest_poll_choices: payload.latest_poll_choices || fallback?.latest_poll_choices,
+      old_texts: payload.old_texts || fallback?.old_texts,
+      is_edited: !!(payload.old_texts?.length || fallback?.old_texts?.length),
+      user_id: envelope.user?.id || fallback?.user_id || '',
+      user: envelope.user ? { ...envelope.user } : fallback?.user,
+      created_at: fallback?.created_at || envelope.created_at || new Date().toISOString(),
+      updated_at: (envelope.updated_at as string | undefined) || envelope.created_at || fallback?.updated_at,
+      type: (envelope as any).type || fallback?.type || 'regular',
+      parent_id: (envelope as any).parent_id || fallback?.parent_id,
+      quoted_message_id: (envelope as any).quoted_message_id || fallback?.quoted_message_id,
+      mentioned_users: (envelope as any).mentioned_users || fallback?.mentioned_users,
+      mentioned_all:
+        (envelope as any).mentioned_all !== undefined ? (envelope as any).mentioned_all : fallback?.mentioned_all,
+    };
+  }
+
   async processE2eeMessage(
     cid: string,
     message: { id: string; mls_ciphertext?: Uint8Array; user?: { id: string }; created_at?: string;[key: string]: unknown },
   ): Promise<Record<string, unknown> | null> {
-    if (this._decryptPromises.has(message.id)) {
-      console.log('[MLS] processE2eeMessage: deduplicating concurrent request via MlsPlaintextCache:', message.id);
-      return this._decryptPromises.get(message.id)!;
+    const versionKey = this._messageVersionKey(message);
+    if (this._decryptPromises.has(versionKey)) {
+      console.log('[MLS] processE2eeMessage: deduplicating concurrent request via MlsPlaintextCache:', versionKey);
+      return this._decryptPromises.get(versionKey)!;
     }
 
     const promise = this._processE2eeMessageInternal(cid, message);
-    this._decryptPromises.set(message.id, promise);
+    this._decryptPromises.set(versionKey, promise);
 
     try {
       return await promise;
     } finally {
-      this._decryptPromises.delete(message.id);
+      this._decryptPromises.delete(versionKey);
     }
   }
 
@@ -2430,6 +2491,7 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   ): Promise<Record<string, unknown> | null> {
     const ciphertext = message.mls_ciphertext;
     if (!ciphertext) return null;
+    const versionKey = this._messageVersionKey(message);
 
     // CRITICAL: If MLS sync is in progress (reconnecting from background),
     // do NOT attempt decryption — it would race with the waterfall decrypt
@@ -2445,15 +2507,15 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         // Sync failed — fall through to normal decrypt
       }
       // Re-check dedup after sync: sync may have already decrypted this message
-      if (this._decryptedMsgIds.has(message.id)) {
-        console.log('[MLS] processE2eeMessage: decrypted by sync (post-wait), returning cached:', message.id);
+      if (this._decryptedMsgIds.has(versionKey)) {
+        console.log('[MLS] processE2eeMessage: decrypted by sync (post-wait), returning cached:', versionKey);
         const cached = await this.storage.loadE2eeMessage(message.id);
-        if (cached) return this._buildFullMessage(cached, message);
+        if (cached && this._storedMessageCoversVersion(cached, message)) return this._buildFullMessage(cached, message);
         return null;
       }
       const existing = await this.storage.loadE2eeMessage(message.id);
-      if (existing) {
-        this._decryptedMsgIds.add(message.id);
+      if (existing && this._storedMessageCoversVersion(existing, message)) {
+        this._decryptedMsgIds.add(versionKey);
         return this._buildFullMessage(existing, message);
       }
       // Message not in sync window — fall through to normal decrypt below
@@ -2468,18 +2530,18 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     // 1. In-memory Set (instant, no async) — catches the race where waterfall
     //    decrypt consumed the ratchet but IndexedDB hasn't flushed yet.
     // 2. IndexedDB lookup — catches messages decrypted in a previous session.
-    if (this._decryptedMsgIds.has(message.id)) {
-      console.log('[MLS] processE2eeMessage: already decrypted (in-memory), skipping:', message.id);
+    if (this._decryptedMsgIds.has(versionKey)) {
+      console.log('[MLS] processE2eeMessage: already decrypted (in-memory), skipping:', versionKey);
       const cached = await this.storage.loadE2eeMessage(message.id);
-      if (cached) return this._buildFullMessage(cached, message);
+      if (cached && this._storedMessageCoversVersion(cached, message)) return this._buildFullMessage(cached, message);
       // IndexedDB hasn't flushed yet — return null, UI will show "Encrypted message"
       // but the plaintext IS saved and will appear on next channel load.
       return null;
     }
     const existing = await this.storage.loadE2eeMessage(message.id);
-    if (existing) {
-      console.log('[MLS] processE2eeMessage: already decrypted (IndexedDB), skipping:', message.id);
-      this._decryptedMsgIds.add(message.id);
+    if (existing && this._storedMessageCoversVersion(existing, message)) {
+      console.log('[MLS] processE2eeMessage: already decrypted (IndexedDB), skipping:', versionKey);
+      this._decryptedMsgIds.add(versionKey);
       return this._buildFullMessage(existing, message);
     }
 
@@ -2505,91 +2567,11 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       // Mark as decrypted IMMEDIATELY after process_message succeeds —
       // before any async IndexedDB writes. This is the in-memory dedup
       // that prevents the race with waterfall decrypt.
-      this._decryptedMsgIds.add(message.id);
+      this._decryptedMsgIds.add(versionKey);
 
       if (messageType === 0) {
-        const replacesId = (message as any).replaces_message_id;
-        if (replacesId) {
-          console.log('[MLS] edit message detected:', {
-            cid,
-            edit_id: message.id,
-            replaces_id: replacesId,
-          });
-        }
-        let storedMsg: E2eeStoredMessage;
-
-        if (replacesId) {
-          const originalMsg = await this.storage.loadE2eeMessage(replacesId);
-          if (originalMsg) {
-            const oldTexts = originalMsg.old_texts || [];
-            oldTexts.push({
-              text: originalMsg.text,
-              created_at:
-                originalMsg.updated_at ||
-                originalMsg.created_at ||
-                message.created_at ||
-                new Date().toISOString(),
-            });
-
-            originalMsg.text = payload.text;
-            originalMsg.is_edited = true;
-            originalMsg.updated_at = message.created_at || new Date().toISOString();
-            originalMsg.old_texts = oldTexts;
-            originalMsg.attachments = payload.attachments || originalMsg.attachments;
-            originalMsg.sticker_url = payload.sticker_url || originalMsg.sticker_url;
-            originalMsg.mentioned_users = (message as any).mentioned_users || originalMsg.mentioned_users;
-            originalMsg.mentioned_all = (message as any).mentioned_all !== undefined ? (message as any).mentioned_all : originalMsg.mentioned_all;
-
-            storedMsg = originalMsg;
-          } else {
-            console.warn('[MLS] Original message not found for edit:', replacesId);
-            // Fallback: save as a standalone message but keep the replaces_message_id
-            storedMsg = {
-              id: message.id,
-              cid,
-              content_type: 'mls',
-              text: payload.text,
-              attachments: payload.attachments,
-              sticker_url: payload.sticker_url,
-              poll_type: payload.poll_type,
-              poll_choice_counts: payload.poll_choice_counts,
-              latest_poll_choices: payload.latest_poll_choices,
-              user_id: message.user?.id || '',
-              user: message.user ? { ...message.user } : undefined,
-              created_at: message.created_at || new Date().toISOString(),
-              updated_at: message.created_at || new Date().toISOString(),
-              type: (message as any).type || 'regular',
-              parent_id: (message as any).parent_id,
-              quoted_message_id: (message as any).quoted_message_id,
-              mentioned_users: (message as any).mentioned_users,
-              mentioned_all: (message as any).mentioned_all,
-              replaces_message_id: replacesId,
-            };
-          }
-        } else {
-          // ApplicationMessage — save decrypted Standard content to local DB
-            storedMsg = {
-            id: message.id,
-            cid,
-            content_type: 'mls',
-            // Decrypted Standard content
-            text: payload.text,
-            attachments: payload.attachments,
-            sticker_url: payload.sticker_url,
-            poll_type: payload.poll_type,
-            poll_choice_counts: payload.poll_choice_counts,
-            latest_poll_choices: payload.latest_poll_choices,
-            // Envelope metadata
-            user_id: message.user?.id || '',
-            user: message.user ? { ...message.user } : undefined,
-              created_at: message.created_at || new Date().toISOString(),
-            type: (message as any).type || 'regular',
-            parent_id: (message as any).parent_id,
-            quoted_message_id: (message as any).quoted_message_id,
-            mentioned_users: (message as any).mentioned_users,
-            mentioned_all: (message as any).mentioned_all,
-          };
-        }
+        const existingMessage = await this.storage.loadE2eeMessage(message.id);
+        const storedMsg = this._storedFromPayload(cid, payload, message, existingMessage);
         
         await this.storage.saveE2eeMessage(storedMsg);
 
@@ -2655,6 +2637,8 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       poll_type: stored.poll_type,
       poll_choice_counts: stored.poll_choice_counts,
       latest_poll_choices: stored.latest_poll_choices,
+      old_texts: stored.old_texts,
+      is_edited: stored.is_edited,
       // E2EE status (only present during deferred decryption)
       e2ee_status: (stored as any).e2ee_status || null,
       // Envelope metadata (routing + notifications)
@@ -2798,8 +2782,8 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
   }
 
   /**
-   * Update an encrypted E2EE message (append-only edit).
-   * The backend will emit message.updated and the edit is reconciled via replaces_message_id.
+   * Update an encrypted E2EE message by overwriting the server snapshot.
+   * The encrypted payload carries the latest text plus cumulative old_texts.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async updateMessage(
@@ -2821,7 +2805,20 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
       cid,
       message_id: messageId,
     });
+    const existingForPayload = await this.storage.loadE2eeMessage(messageId);
+    const oldTexts = existingForPayload
+      ? [
+          ...(existingForPayload.old_texts || []),
+          {
+            text: existingForPayload.text,
+            created_at: existingForPayload.updated_at || existingForPayload.created_at || new Date().toISOString(),
+          },
+        ]
+      : [];
     const payload: E2eePayload = { text };
+    if (oldTexts.length > 0) {
+      payload.old_texts = oldTexts;
+    }
     if (options.attachments && options.attachments.length > 0) {
       payload.attachments = options.attachments;
     }
@@ -2869,14 +2866,8 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
 
     // Update local plaintext cache for own-device edits (MLS cannot decrypt self-sent).
     try {
-      const existing = await this.storage.loadE2eeMessage(messageId);
+      const existing = existingForPayload || await this.storage.loadE2eeMessage(messageId);
       if (existing) {
-        const oldTexts = existing.old_texts || [];
-        oldTexts.push({
-          text: existing.text,
-          created_at: existing.updated_at || existing.created_at || new Date().toISOString(),
-        });
-
         await this.storage.saveE2eeMessage({
           ...existing,
           text,
@@ -2955,10 +2946,10 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
     for (const msg of sorted) {
       if (!msg.mls_ciphertext) continue;
 
-      // Skip messages already decrypted & stored (MLS forward secrecy:
+      // Skip messages already decrypted & stored for this version (MLS forward secrecy:
       // keys are consumed after first use, re-decrypting would fail)
       const existing = await this.storage.loadE2eeMessage(msg.id);
-      if (existing) {
+      if (existing && this._storedMessageCoversVersion(existing, msg)) {
         decrypted.push(existing);
         continue;
       }
@@ -2969,78 +2960,11 @@ export class MlsManager<ErmisChatGenerics extends ExtendableGenerics = DefaultGe
         // Mark as decrypted IMMEDIATELY after process_message succeeds —
         // before async IndexedDB write. This prevents the race where WS
         // message.new arrives before saveE2eeMessage() flushes to IndexedDB.
-        this._decryptedMsgIds.add(msg.id);
+        this._decryptedMsgIds.add(this._messageVersionKey(msg));
 
         if (messageType === 0) {
-          const replacesId = (msg as any).replaces_message_id;
-          let decryptedMsg: E2eeStoredMessage;
-
-          if (replacesId) {
-            const originalMsg = await this.storage.loadE2eeMessage(replacesId);
-            if (originalMsg) {
-              const oldTexts = originalMsg.old_texts || [];
-              oldTexts.push({
-                text: originalMsg.text,
-                created_at: originalMsg.updated_at || originalMsg.created_at || msg.created_at,
-              });
-
-              originalMsg.text = payload.text;
-              originalMsg.is_edited = true;
-              originalMsg.updated_at = msg.created_at || new Date().toISOString();
-              originalMsg.old_texts = oldTexts;
-              originalMsg.attachments = payload.attachments || originalMsg.attachments;
-              originalMsg.sticker_url = payload.sticker_url || originalMsg.sticker_url;
-              originalMsg.mentioned_users = (msg as any).mentioned_users || originalMsg.mentioned_users;
-              originalMsg.mentioned_all = (msg as any).mentioned_all !== undefined ? (msg as any).mentioned_all : originalMsg.mentioned_all;
-
-              decryptedMsg = originalMsg;
-            } else {
-              console.warn('[MLS] Original message not found for edit during sync:', replacesId);
-              decryptedMsg = {
-                id: msg.id,
-                cid,
-                content_type: 'mls',
-                text: payload.text,
-                attachments: payload.attachments,
-                sticker_url: payload.sticker_url,
-                poll_type: payload.poll_type,
-                poll_choice_counts: payload.poll_choice_counts,
-                latest_poll_choices: payload.latest_poll_choices,
-                user_id: msg.user?.id || '',
-                user: msg.user ? { ...msg.user } : undefined,
-                created_at: msg.created_at,
-                updated_at: msg.created_at,
-                type: (msg as any).type || 'regular',
-                parent_id: (msg as any).parent_id,
-                quoted_message_id: (msg as any).quoted_message_id,
-                mentioned_users: (msg as any).mentioned_users,
-                mentioned_all: (msg as any).mentioned_all,
-                replaces_message_id: replacesId,
-              };
-            }
-          } else {
-            decryptedMsg = {
-              id: msg.id,
-              cid,
-              content_type: 'mls',
-              // Decrypted Standard content
-              text: payload.text,
-              attachments: payload.attachments,
-              sticker_url: payload.sticker_url,
-              poll_type: payload.poll_type,
-              poll_choice_counts: payload.poll_choice_counts,
-              latest_poll_choices: payload.latest_poll_choices,
-              // Envelope metadata
-              user_id: msg.user?.id || '',
-              user: msg.user ? { ...msg.user } : undefined,
-              created_at: msg.created_at,
-              type: (msg as any).type || 'regular',
-              parent_id: (msg as any).parent_id,
-              quoted_message_id: (msg as any).quoted_message_id,
-              mentioned_users: (msg as any).mentioned_users,
-              mentioned_all: (msg as any).mentioned_all,
-            };
-          }
+          const fallback = await this.storage.loadE2eeMessage(msg.id);
+          const decryptedMsg = this._storedFromPayload(cid, payload, msg, fallback);
           await this.storage.saveE2eeMessage(decryptedMsg);
           decrypted.push(decryptedMsg);
         }

@@ -2168,7 +2168,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
           console.log('[WS] message.updated:', {
             cid: this.cid,
             id: event.message.id,
-            replaces_message_id: (event.message as any).replaces_message_id,
             content_type: event.message.content_type,
             has_ciphertext: !!event.message.mls_ciphertext,
           });
@@ -2205,7 +2204,6 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
               .processE2eeMessage(this.cid, event.message as any)
               .then((result: Record<string, unknown> | null) => {
                 if (result?.text) {
-                  // result contains the ORIGINAL message id and updated fields
                   const decryptedMessage = {
                     ...result,
                     content_type: 'standard',
@@ -2234,7 +2232,8 @@ export class Channel<ErmisChatGenerics extends ExtendableGenerics = DefaultGener
                 console.error('[E2EE] Failed to decrypt updated message:', this.cid, err);
               });
 
-            // CRITICAL: Do NOT add the encrypted edit message carrier to channelState!
+            // CRITICAL: Do NOT add the encrypted snapshot to channelState.
+            // The decrypted same-id snapshot above replaces the visible message.
             break;
           }
 
